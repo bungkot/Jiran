@@ -1,0 +1,15 @@
+.venv/
+.git/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+tests/
+logs/
+workspace/
+point.md
+README.md

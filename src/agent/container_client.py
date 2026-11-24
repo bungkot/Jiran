@@ -229,6 +229,7 @@ def run_container_goal(
         "max_output_chars": max(settings.max_output_chars, 20_000),
     }
     if on_output is not None:
+
         def forward_output(chunk: str) -> None:
             if _extract_payload(chunk) is None:
                 on_output(chunk)

@@ -90,10 +90,13 @@ class _CLIProgress:
     def _show(self, message: str, *, event: str = "") -> None:
         if event in {
             "model.request",
+            "plan.request",
             "judge.request",
             "verification.started",
             "goal.verification.started",
             "tool.started",
+            "goal.plan.started",
+            "goal.todo.started",
         }:
             if self._status is None:
                 self._status = _progress_console.status(Text(message), spinner="dots")
@@ -254,9 +257,7 @@ def cmd_submit(
     try:
         if wait:
             with _CLIProgress() as progress:
-                job = submit_goal(
-                    goal, settings, on_progress=progress.service_update, **kwargs
-                )
+                job = submit_goal(goal, settings, on_progress=progress.service_update, **kwargs)
         else:
             job = submit_goal(goal, settings, **kwargs)
     except ServiceError as exc:
@@ -278,7 +279,9 @@ def cmd_job(settings: Settings, job_id: str) -> bool:
         console.print(f"[red]Gagal:[/] {exc}")
         return False
     _print_job(job)
-    return job.get("status") != "failed"
+    # Hanya job terminal yang berhasil yang dianggap sukses; queued/running
+    # harus mengembalikan nonzero agar pipeline tidak melanjutkan terlalu cepat.
+    return job.get("status") == "completed" and bool(job.get("achieved"))
 
 
 def cmd_run(
@@ -342,6 +345,7 @@ def _goal_payload(result: GoalResult) -> dict[str, Any]:
         "tool_calls": result.tool_calls,
         "files_written": result.files_written,
         "response": result.response,
+        "judge_skipped": bool(result.iterations and result.iterations[-1].acceptance.judge_skipped),
     }
 
 
@@ -420,8 +424,7 @@ def cmd_goal(
         return False
     if json_output:
         _print_json(
-            container_result.payload
-            or {"achieved": False, "error": "output JSON tidak ditemukan"}
+            container_result.payload or {"achieved": False, "error": "output JSON tidak ditemukan"}
         )
     else:
         _print_container_result(container_result)
@@ -587,11 +590,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     submit_parser.add_argument("--project", default=None, help="Nama folder proyek di workspace")
     submit_parser.add_argument(
-        "--verify", action="append", default=[], metavar="COMMAND",
+        "--verify",
+        action="append",
+        default=[],
+        metavar="COMMAND",
         help="Perintah verifikasi wajib lulus; dapat diulang",
     )
     submit_parser.add_argument(
-        "--require-file", action="append", default=[], metavar="PATH",
+        "--require-file",
+        action="append",
+        default=[],
+        metavar="PATH",
         help="File yang harus ada sebelum tujuan tercapai; dapat diulang",
     )
     submit_parser.add_argument("--max-iterations", type=int, default=None, metavar="N")

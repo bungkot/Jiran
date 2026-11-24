@@ -3,13 +3,19 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +28,42 @@ jobs:
       - run: python -m pip install uv
       - run: uv sync --locked --extra dev
       - run: uv audit
-      - run: uv run ruff check src tests
+      - run: uv run ruff check src tests scripts
+      - run: uv run ruff format --check src tests scripts
       - run: uv run mypy src/agent
-      - run: uv run pytest -q --cov --cov-report=term-missing
+      - run: uv run pytest -q --cov --cov-report=term-missing --cov-report=xml
+
+  # E2E sengaja tidak dijalankan pada setiap push: butuh Ollama + Docker dan
+  # memakan waktu beberapa menit. Picu manual lewat Actions > Run workflow.
+  integration:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+    env:
+      OLLAMA_BASE_URL: http://localhost:11434
+      OLLAMA_MODEL: qwen3.5:4b
+      RUN_OLLAMA: "1"
+      RUN_AGENT_E2E: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install uv
+      - run: uv sync --locked --extra dev
+      - name: Tarik model
+        run: |
+          for attempt in 1 2 3; do
+            curl -fsS -X POST http://localhost:11434/api/pull \
+              -H 'Content-Type: application/json' \
+              -d '{"name":"qwen3.5:4b","stream":false}' && exit 0
+            sleep 10
+          done
+          exit 1
+      - name: Uji integrasi Ollama + Docker
+        run: uv run pytest -q -m integration tests/test_phase1_llm.py tests/test_integration_agent.py

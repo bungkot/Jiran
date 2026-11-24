@@ -23,7 +23,15 @@ def build_all_tools(
     """Build file and isolated command tools scoped to one project directory."""
     sandbox = Sandbox(project_root or settings.workspace_dir)
     return [
-        *build_fs_tools(sandbox, settings.max_file_bytes),
-        *build_edit_tools(sandbox, settings.max_file_bytes),
+        *build_fs_tools(
+            sandbox,
+            settings.max_file_bytes,
+            min_free_disk_mb=settings.sandbox_min_free_disk_mb,
+        ),
+        *build_edit_tools(
+            sandbox,
+            settings.max_file_bytes,
+            min_free_disk_mb=settings.sandbox_min_free_disk_mb,
+        ),
         *build_shell_tools(sandbox, settings, on_output=on_output),
     ]

@@ -11,7 +11,10 @@ MAX_LIST_ENTRIES = 200
 
 
 def build_fs_tools(
-    sandbox: Sandbox, max_file_bytes: int = 200_000, max_read_chars: int = 20_000
+    sandbox: Sandbox,
+    max_file_bytes: int = 200_000,
+    max_read_chars: int = 20_000,
+    min_free_disk_mb: int = 0,
 ) -> list[BaseTool]:
     @tool
     def write_file(path: str, content: str) -> str:
@@ -27,8 +30,7 @@ def build_fs_tools(
                 return f"ERROR: file terlalu besar ({len(data)} > {max_file_bytes} byte)"
             if target.exists() and target.is_dir():
                 return f"ERROR: {path!r} adalah folder"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(data)
+            sandbox.write_bytes(target, data, min_free_disk_mb=min_free_disk_mb)
             return f"OK: menulis {len(data)} byte ke {sandbox.relative(target)}"
         except SandboxError as e:
             return f"ERROR: {e}"
@@ -48,6 +50,31 @@ def build_fs_tools(
                 return f"ERROR: file tidak ditemukan: {path!r}"
             if target.is_dir():
                 return f"ERROR: {path!r} adalah folder, gunakan list_dir"
+            if start_line or end_line:
+                # Baca bertahap: jangan memuat seluruh file hanya untuk satu rentang.
+                first = max(start_line, 1)
+                last = end_line if end_line > 0 else 0
+                if last and last < first:
+                    return "ERROR: end_line harus >= start_line"
+                collected: list[str] = []
+                with target.open("r", encoding="utf-8") as stream:
+                    for number, line in enumerate(stream, start=1):
+                        if last and number > last:
+                            break
+                        if number >= first:
+                            collected.append(f"{number}: {line.rstrip()}")
+                if not collected:
+                    return f"ERROR: start_line {first} melebihi jumlah baris file"
+                numbered = "\n".join(collected)
+                if len(numbered) > max_read_chars:
+                    return numbered[:max_read_chars] + "\n...[dipotong, persempit rentang baris]"
+                return numbered
+            size = target.stat().st_size
+            if size > max_file_bytes:
+                return (
+                    f"ERROR: file terlalu besar untuk dibaca penuh ({size} > "
+                    f"{max_file_bytes} byte); gunakan start_line/end_line"
+                )
             text = target.read_text(encoding="utf-8")
         except SandboxError as e:
             return f"ERROR: {e}"
@@ -55,20 +82,6 @@ def build_fs_tools(
             return "ERROR: file bukan teks UTF-8 (kemungkinan biner)"
         except OSError as e:
             return f"ERROR: gagal membaca file: {e}"
-        if start_line or end_line:
-            lines = text.splitlines()
-            first = max(start_line, 1)
-            last = min(end_line, len(lines)) if end_line > 0 else len(lines)
-            if first > len(lines):
-                return f"ERROR: start_line {first} melebihi jumlah baris ({len(lines)})"
-            if last < first:
-                return "ERROR: end_line harus >= start_line"
-            numbered = "\n".join(
-                f"{number}: {line}" for number, line in enumerate(lines[first - 1 : last], first)
-            )
-            if len(numbered) > max_read_chars:
-                return numbered[:max_read_chars] + "\n...[dipotong, persempit rentang baris]"
-            return numbered
         if len(text) > max_read_chars:
             return text[:max_read_chars] + f"\n...[dipotong, total {len(text)} karakter]"
         return text

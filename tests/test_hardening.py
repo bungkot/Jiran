@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 from agent import main as cli
 from agent.agent import (
     AgentError,
+    _compact_tool_result,
     _enforce_context_limit,
     _extract_tool_calls,
     _tool_result,
@@ -73,6 +74,27 @@ def test_extract_tool_calls_normalisasi_args_string_native():
     assert calls[0]["args"] == {"path": "x", "content": "y"}
 
 
+def test_extract_tool_calls_mengabaikan_tool_call_di_blok_reasoning():
+    """Regresi C1: contoh tool di jejak penalaran tidak boleh dieksekusi."""
+    text = (
+        "<think>Saya akan menulis ```json\n"
+        '{"name":"write_file","arguments":{"path":"SECRET","content":"boom"}}\n'
+        "``` lalu lanjut.</think>\nRingkasan."
+    )
+    assert _extract_tool_calls(_Response(content=text)) == []
+
+
+def test_extract_tool_calls_masih_menerima_tool_di_luar_reasoning():
+    text = (
+        "<think>rencana internal saya</think>\n"
+        "```json\n"
+        '{"name":"list_dir","arguments":{"path":"."}}\n'
+        "```"
+    )
+    calls = _extract_tool_calls(_Response(content=text))
+    assert [call["name"] for call in calls] == ["list_dir"]
+
+
 def test_tool_result_menangkap_exception_tak_terduga():
     @tool
     def boom(x: str) -> str:
@@ -133,6 +155,15 @@ def test_model_gagal_setelah_retry_habis(monkeypatch, settings):
         run_agent("Tulis sesuatu.", project, settings, llm=BrokenModel())
 
 
+def test_compact_tool_result_membatasi_panjang_dan_menyimpan_tail():
+    text = "[exit_code=1] docker run " + "x" * 3000 + "\nERROR_DI_AKHIR"
+    compact = _compact_tool_result(text, 300)
+
+    assert len(compact) <= 300
+    assert "docker run ..." in compact
+    assert "ERROR_DI_AKHIR" in compact
+
+
 def test_enforce_context_limit_memotong_pesan_lama():
     messages = [
         SystemMessage(content="sistem"),
@@ -142,6 +173,105 @@ def test_enforce_context_limit_memotong_pesan_lama():
     _enforce_context_limit(messages, limit=1200)
     assert len(messages[1].content) < 600
     assert messages[-1].content == "Pesan terakhir"
+
+
+def test_enforce_context_limit_memangkas_banyak_pesan_pendek():
+    """Regresi H1: total karakter harus turun, bukan hanya pesan > 500 char."""
+    messages = [
+        SystemMessage(content="sistem"),
+        *[AIMessage(content="x" * 400) for _ in range(100)],
+    ]
+    _enforce_context_limit(messages, limit=12000)
+    total = sum(len(message.content) for message in messages)
+    assert total <= 12000
+    assert messages[0].content == "sistem"
+    assert messages[-1].content == "x" * 400
+
+
+def test_search_files_dapat_memenuhi_gate_inspeksi(settings):
+    """Regresi H2: search_files adalah inspeksi yang sah menurut system prompt."""
+    project = settings.workspace_dir
+    project.mkdir(parents=True)
+    (project / "app.py").write_text("TARGET = 1\n")
+
+    def call(name, args, call_id):
+        return AIMessage(
+            content="",
+            tool_calls=[{"name": name, "args": args, "id": call_id, "type": "tool_call"}],
+        )
+
+    class Model:
+        def __init__(self):
+            self.responses = iter(
+                [
+                    call("search_files", {"pattern": "TARGET", "path": "."}, "c1"),
+                    call("write_file", {"path": "main.py", "content": "print('ok')\n"}, "c2"),
+                    AIMessage(content="Selesai."),
+                ]
+            )
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def invoke(self, messages):
+            return next(self.responses)
+
+    result = run_agent("Buat main.py.", project, settings, llm=Model())
+    assert result.ok
+    assert (project / "main.py").read_text() == "print('ok')\n"
+
+
+def test_exception_model_tak_terduka_jadi_agent_error(monkeypatch, settings):
+    """Regresi H3: worker tidak boleh mati karena exception di luar whitelist."""
+    project = settings.workspace_dir
+    project.mkdir(parents=True)
+
+    class Model:
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def invoke(self, messages):
+            raise ConnectionError("koneksi putus")
+
+    monkeypatch.setattr("agent.agent.time.sleep", lambda _: None)
+    with pytest.raises(AgentError, match="ConnectionError"):
+        run_agent("Tulis sesuatu.", project, settings, llm=Model())
+
+
+@pytest.mark.parametrize("nilai", ["inf", "-inf", "nan", "NaN", "Infinity"])
+def test_env_float_menolak_nilai_tak_hingga(monkeypatch, nilai):
+    monkeypatch.setenv("SERVICE_POLL_INTERVAL_S", nilai)
+    with pytest.raises(SettingsError, match="angka hingga"):
+        Settings.load()
+
+
+def test_settings_menolak_poll_interval_di_luar_rentang(settings):
+    with pytest.raises(SettingsError, match="SERVICE_POLL_INTERVAL_S"):
+        replace(settings, service_poll_interval_s=0)
+    with pytest.raises(SettingsError, match="SERVICE_POLL_INTERVAL_S"):
+        replace(settings, service_poll_interval_s=61)
+
+
+def test_settings_fail_closed_auth_dan_token(settings):
+    with pytest.raises(SettingsError, match="AGENT_API_TOKEN wajib"):
+        replace(settings, service_host="0.0.0.0")  # noqa: S104 - skenario fail-closed
+    with pytest.raises(SettingsError, match="minimal 32 karakter"):
+        replace(settings, service_token="pendek")
+    assert replace(settings, service_token="x" * 32).service_token == "x" * 32
+
+
+def test_settings_url_dan_iteration_limit(settings):
+    with pytest.raises(SettingsError, match="AGENT_SERVICE_URL"):
+        replace(settings, service_url="bukan-url")
+    with pytest.raises(SettingsError, match="MAX_GOAL_ITER_LIMIT"):
+        replace(settings, max_goal_iterations=100)
+
+
+def test_settings_gambar_tidak_boleh_awalan_dash(settings):
+    with pytest.raises(SettingsError, match="AGENT_CONTAINER_IMAGE"):
+        replace(settings, container_image="--privileged")
+    with pytest.raises(SettingsError, match="AGENT_SANDBOX_IMAGE"):
+        replace(settings, sandbox_image="--network=host")
 
 
 def test_settings_load_env_angka_invalid(monkeypatch):

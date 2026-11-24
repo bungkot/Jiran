@@ -25,6 +25,22 @@ def summarize_event(event: dict[str, Any]) -> str | None:
         project = event.get("project", "?")
         limit = event.get("max_iterations", "?")
         return f"Goal dimulai — proyek {project}, batas {limit} putaran"
+    if name == "goal.plan.started":
+        return "Menganalisa goal dan menyusun tugas"
+    if name == "goal.plan.created":
+        todos = event.get("todos")
+        count = len(todos) if isinstance(todos, list) else event.get("count", "?")
+        return f"Rencana dibuat — {count} tugas kecil"
+    if name == "goal.plan.fallback":
+        return "Rencana gagal; goal dikerjakan sebagai satu tugas"
+    if name == "goal.todo.started":
+        index = event.get("iteration", "?")
+        total = event.get("total_todos", "?")
+        return f"Tugas {index}/{total} dimulai"
+    if name == "goal.todo.completed":
+        index = event.get("iteration", "?")
+        state = "selesai" if event.get("complete") else "belum selesai"
+        return f"Tugas {index} {state}"
     if name == "goal.iteration.started":
         return f"Putaran {event.get('iteration', '?')} dimulai"
     if name == "goal.iteration.completed":
@@ -70,12 +86,17 @@ def summarize_event(event: dict[str, Any]) -> str | None:
     if name == "judge.response":
         return "Penilaian judge diterima"
     if name == "goal.acceptance.checked":
-        state = "terpenuhi" if (
-            event.get("verification_ok")
-            and not event.get("missing_files")
-            and event.get("judge_ok")
-        ) else "belum terpenuhi"
-        return f"Kriteria penerimaan {state}"
+        state = (
+            "terpenuhi"
+            if (
+                event.get("verification_ok")
+                and not event.get("missing_files")
+                and event.get("judge_ok")
+            )
+            else "belum terpenuhi"
+        )
+        skipped = " (tanpa judge)" if event.get("judge_skipped") else ""
+        return f"Kriteria penerimaan {state}{skipped}"
     if name == "goal.completed":
         return f"Goal tercapai dalam {event.get('iterations', '?')} putaran"
     if name == "goal.failed":

@@ -49,6 +49,11 @@ def test_build_goal_container_argv_uses_same_paths_and_goal_flags(settings):
         max_iterations=3,
         allow_no_changes=True,
     )
+    # Default aman: socket tidak disertakan; Aktifkan eksplisit untuk mode ini.
+    default_argv = _argv(request, settings, workspace=workspace, logs=logs)
+    assert "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock" not in default_argv
+
+    settings = replace(settings, container_docker_socket=True)
     argv = _argv(request, settings, workspace=workspace, logs=logs)
 
     assert argv[:3] == ["docker", "run", "--rm"]

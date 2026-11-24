@@ -48,6 +48,19 @@ class LLMPingResult(BaseModel):
     error: str = ""
 
 
+class TodoItem(BaseModel):
+    """Satu tugas kecil hasil dekomposisi goal."""
+
+    task: str
+    files: tuple[str, ...] = Field(default_factory=tuple)
+
+
+class GoalPlan(BaseModel):
+    """Rencana tugas berurutan untuk satu goal."""
+
+    todos: list[TodoItem] = Field(default_factory=list)
+
+
 class CommandResult(BaseModel):
     argv: list[str]
     exit_code: int | None = None

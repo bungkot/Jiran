@@ -1,3 +1,13 @@
+# Compose CANONICAL untuk seluruh stack Jiran.
+#
+# Jalankan dari folder ini:
+#   docker compose up -d
+# Atau dari root repo (root/docker-compose.yml hanya wrapper):
+#   export JIRAN_ROOT="$PWD/apps/Jiran" && docker compose up -d
+#
+# JIRAN_ROOT boleh dioverride bila folder proyek dipindah; default-nya ${PWD}.
+# Path host dan container sengaja SAMA agar bind mount docker-in-docker valid.
+
 services:
   ollama:
     image: ollama/ollama:latest
@@ -53,27 +63,37 @@ services:
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
-      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
       LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-300}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
-      MAX_CONTEXT_CHARS: ${MAX_CONTEXT_CHARS:-40000}
-      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-20}
-      MAX_AGENT_TOOL_CALLS: ${MAX_AGENT_TOOL_CALLS:-40}
-      MAX_GOAL_ITER: ${MAX_GOAL_ITER:-9}
-      MAX_FIX_ITER: ${MAX_FIX_ITER:-5}
+      MAX_CONTEXT_CHARS: ${MAX_CONTEXT_CHARS:-12000}
+      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-15}
+      MAX_AGENT_TOOL_CALLS: ${MAX_AGENT_TOOL_CALLS:-30}
+      MAX_GOAL_ITER: ${MAX_GOAL_ITER:-5}
+      MAX_GOAL_ITER_LIMIT: ${MAX_GOAL_ITER_LIMIT:-50}
+      REQUIRE_JUDGE_ON_FAST_PATH: ${REQUIRE_JUDGE_ON_FAST_PATH:-false}
+      MAX_FIX_ITER: ${MAX_FIX_ITER:-3}
       COMMAND_TIMEOUT_S: ${COMMAND_TIMEOUT_S:-300}
       AGENT_SANDBOX_IMAGE: ${AGENT_SANDBOX_IMAGE:-}
       AGENT_SANDBOX_NETWORK: ${AGENT_SANDBOX_NETWORK:-none}
-      AGENT_API_TOKEN: ${AGENT_API_TOKEN:-}
-      WORKSPACE_DIR: ${PWD}/workspace
-      AGENT_LOGS_DIR: ${PWD}/logs
+      AGENT_SANDBOX_MIN_FREE_DISK_MB: ${AGENT_SANDBOX_MIN_FREE_DISK_MB:-256}
+      AGENT_SANDBOX_DISK_QUOTA_MB: ${AGENT_SANDBOX_DISK_QUOTA_MB:-0}
+      # Wajib: endpoint /goals dapat memicu agent menulis file dan menjalankan
+      # perintah. Service bind 0.0.0.0 di dalam container, jadi token tidak boleh
+      # kosong. Minimal 32 karakter (Settings memvalidasi ini saat startup).
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:?AGENT_API_TOKEN wajib diisi, min. 32 karakter}
+      WORKSPACE_DIR: ${JIRAN_ROOT:-${PWD}}/workspace
+      AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
       AGENT_SERVICE_HOST: 0.0.0.0
       AGENT_SERVICE_PORT: 8765
-      AGENT_CONTAINER_DOCKER_SOCKET: "true"
+      AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
     volumes:
-      - ${PWD}/workspace:${PWD}/workspace
-      - ${PWD}/logs:${PWD}/logs
+      - ${JIRAN_ROOT:-${PWD}}/workspace:${JIRAN_ROOT:-${PWD}}/workspace
+      - ${JIRAN_ROOT:-${PWD}}/logs:${JIRAN_ROOT:-${PWD}}/logs
+      # Diperlukan agent untuk menjalankan verifikasi di container bersarang.
+      # PERINGATAN: akses Docker daemon = setara root host. Batasi akses ke
+      # endpoint /goals dengan token dan jangan ekspos ke jaringan publik.
       - /var/run/docker.sock:/var/run/docker.sock
     user: "${UID:-1000}:${GID:-1000}"
     group_add:

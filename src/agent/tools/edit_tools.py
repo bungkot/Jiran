@@ -38,7 +38,9 @@ MAX_SEARCH_RESULTS = 100
 MAX_LINE_CHARS = 300
 
 
-def build_edit_tools(sandbox: Sandbox, max_file_bytes: int = 200_000) -> list[BaseTool]:
+def build_edit_tools(
+    sandbox: Sandbox, max_file_bytes: int = 200_000, min_free_disk_mb: int = 0
+) -> list[BaseTool]:
     @tool
     def edit_file(path: str, old_str: str, new_str: str, replace_all: bool = False) -> str:
         """Ganti teks di file yang SUDAH ada. `old_str` harus persis sama dengan isi file
@@ -54,6 +56,9 @@ def build_edit_tools(sandbox: Sandbox, max_file_bytes: int = 200_000) -> list[Ba
                 return "ERROR: old_str tidak boleh kosong"
             if old_str == new_str:
                 return "ERROR: old_str dan new_str identik; tidak ada perubahan"
+            size = target.stat().st_size
+            if size > max_file_bytes:
+                return f"ERROR: file terlalu besar untuk diedit ({size} > {max_file_bytes} byte)"
             text = target.read_text(encoding="utf-8")
         except SandboxError as exc:
             return f"ERROR: {exc}"
@@ -78,7 +83,9 @@ def build_edit_tools(sandbox: Sandbox, max_file_bytes: int = 200_000) -> list[Ba
         if len(data) > max_file_bytes:
             return f"ERROR: hasil edit terlalu besar ({len(data)} > {max_file_bytes} byte)"
         try:
-            target.write_bytes(data)
+            sandbox.write_bytes(target, data, min_free_disk_mb=min_free_disk_mb)
+        except SandboxError as exc:
+            return f"ERROR: {exc}"
         except OSError as exc:
             return f"ERROR: gagal menulis file: {exc}"
         replaced = count if replace_all else 1
@@ -124,9 +131,7 @@ def build_edit_tools(sandbox: Sandbox, max_file_bytes: int = 200_000) -> list[Ba
                     continue
                 if is_sensitive_relative_path(relative) or file_path.is_symlink():
                     continue
-                if glob and not (
-                    fnmatch.fnmatch(name, glob) or fnmatch.fnmatch(relative, glob)
-                ):
+                if glob and not (fnmatch.fnmatch(name, glob) or fnmatch.fnmatch(relative, glob)):
                     continue
                 try:
                     if file_path.stat().st_size > max_file_bytes:

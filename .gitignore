@@ -11,4 +11,3 @@ logs/*
 .mypy_cache/
 .ruff_cache/
 point.md
-README.md

@@ -173,6 +173,20 @@ def run_argv(
     )
 
 
+_EXTENSION_IMAGES = (
+    (".py", "python:3.13-slim"),
+    (".js", "node:22-bookworm-slim"),
+    (".ts", "node:22-bookworm-slim"),
+    (".go", "golang:1.25-bookworm"),
+    (".rs", "rust:1-bookworm"),
+    (".java", "eclipse-temurin:21-jdk"),
+    (".rb", "ruby:3.4-slim"),
+    (".php", "composer:2"),
+    (".cs", "mcr.microsoft.com/dotnet/sdk:10.0"),
+    (".sh", "debian:bookworm-slim"),
+)
+
+
 def detect_sandbox_image(project_root: Path, override: str | None = None) -> str:
     if override:
         return override
@@ -182,10 +196,38 @@ def detect_sandbox_image(project_root: Path, override: str | None = None) -> str
             for manifest in manifests
         ):
             return image
+    for ext, image in _EXTENSION_IMAGES:
+        if next(project_root.rglob(f"*{ext}"), None) is not None:
+            return image
     raise SandboxError(
         "Stack proyek tidak terdeteksi. Atur AGENT_SANDBOX_IMAGE ke image Linux "
         "yang berisi toolchain proyek."
     )
+
+
+def _external_symlinks(project_root: Path) -> list[str]:
+    """Symlink yang keluar workspace tidak boleh ikut terbaca di container.
+
+    `_secret_mount_args` melewati symlink karena menutupnya dengan bind mount
+    bisa saja mengikuti link ke path host. Lebih aman: tolak eksekusi bila ada
+    symlink yang resolved target-nya di luar root.
+    """
+    root = project_root.resolve()
+    external: list[str] = []
+    for current, dirs, files in os.walk(root, followlinks=False):
+        parent = Path(current)
+        for name in (*dirs, *files):
+            link = parent / name
+            if not link.is_symlink():
+                continue
+            try:
+                resolved = link.resolve()
+            except OSError:
+                external.append(link.relative_to(root).as_posix())
+                continue
+            if resolved != root and root not in resolved.parents:
+                external.append(link.relative_to(root).as_posix())
+    return external
 
 
 def _secret_mount_args(project_root: Path) -> list[str]:
@@ -264,12 +306,23 @@ def _docker_command(
     if not work_dir.is_dir():
         raise SandboxError(f"cwd bukan folder yang ada: {cwd!r}")
 
+    external = _external_symlinks(sandbox.root)
+    if external:
+        shown = ", ".join(external[:5])
+        raise SandboxError(
+            f"workspace mengandung symlink ke luar workspace ({shown}); "
+            "hapus link tersebut sebelum menjalankan perintah"
+        )
+
     image = detect_sandbox_image(sandbox.root, settings.sandbox_image)
     container_name = f"coding-agent-{uuid.uuid4().hex[:16]}"
     relative_cwd = work_dir.relative_to(sandbox.root).as_posix()
     container_cwd = "/workspace" if relative_cwd == "." else f"/workspace/{relative_cwd}"
     mount_source = str(sandbox.root).replace(",", r"\,")
-    temp_options = "rw,nosuid,size=256m"
+    if any(char in mount_source for char in ("\n", "\r")):
+        raise SandboxError("path workspace mengandung newline; mount Docker tidak aman")
+    # nodev/noexec mencegah payload di /tmp dieksekusi meski rootfs read-only.
+    temp_options = "rw,nosuid,nodev,noexec,size=256m"
     if sys.platform != "win32":
         temp_options += f",uid={os.getuid()},gid={os.getgid()}"
     args = [
@@ -293,31 +346,39 @@ def _docker_command(
         f"{settings.sandbox_memory_mb}m",
         "--cpus",
         str(settings.sandbox_cpus),
-        "--tmpfs",
-        f"/tmp:{temp_options}",  # noqa: S108 - /tmp adalah tmpfs container yang dimaksud
-        "--env",
-        "HOME=/tmp",
-        "--env",
-        "TMPDIR=/tmp",
-        "--env",
-        "npm_config_cache=/tmp/npm-cache",
-        "--env",
-        "PIP_CACHE_DIR=/tmp/pip-cache",
-        "--env",
-        "CARGO_HOME=/tmp/cargo",
-        "--env",
-        "GOCACHE=/tmp/go-cache",
-        "--env",
-        "NEXT_TELEMETRY_DISABLED=1",
-        "--env",
-        "NO_COLOR=1",
-        "--env",
-        "FORCE_COLOR=0",
-        "--env",
-        "npm_config_update_notifier=false",
-        "--mount",
-        f"type=bind,source={mount_source},target=/workspace",
     ]
+    if settings.sandbox_disk_quota_mb > 0:
+        # Membatasi writable layer container. TIDAK membatasi bind mount
+        # /workspace (Docker tidak menyediakan kuota untuk bind mount).
+        args.extend(["--storage-opt", f"size={settings.sandbox_disk_quota_mb}m"])
+    args.extend(
+        [
+            "--tmpfs",
+            f"/tmp:{temp_options}",  # noqa: S108 - /tmp adalah tmpfs container yang dimaksud
+            "--env",
+            "HOME=/tmp",
+            "--env",
+            "TMPDIR=/tmp",
+            "--env",
+            "npm_config_cache=/tmp/npm-cache",
+            "--env",
+            "PIP_CACHE_DIR=/tmp/pip-cache",
+            "--env",
+            "CARGO_HOME=/tmp/cargo",
+            "--env",
+            "GOCACHE=/tmp/go-cache",
+            "--env",
+            "NEXT_TELEMETRY_DISABLED=1",
+            "--env",
+            "NO_COLOR=1",
+            "--env",
+            "FORCE_COLOR=0",
+            "--env",
+            "npm_config_update_notifier=false",
+            "--mount",
+            f"type=bind,source={mount_source},target=/workspace",
+        ]
+    )
     args.extend(_secret_mount_args(sandbox.root))
     if sys.platform != "win32":
         args.extend(["--user", f"{os.getuid()}:{os.getgid()}"])

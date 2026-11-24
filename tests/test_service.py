@@ -1,12 +1,23 @@
 import json
+import socket
 import threading
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from agent.service import AgentService, create_server
+from agent.service import AgentService, QueueFullError, create_server, parse_goal_options
+
+_TOKEN = "token-rahasia-32-karakter-lebih-panjang"  # noqa: S105 - token dummy untuk test
+
+
+def _free_port() -> int:
+    """Cari port kosong agar test tidak bergantung pada service standby di host."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 def wait_for(service: AgentService, job_id: str, timeout: float = 5.0):
@@ -33,7 +44,11 @@ def test_service_processes_goals_serially(settings):
         with guard:
             active -= 1
         return SimpleNamespace(
-            achieved=True, reason="selesai", project="demo", iterations=(), files_written=1,
+            achieved=True,
+            reason="selesai",
+            project="demo",
+            iterations=(),
+            files_written=1,
             response="ok",
         )
 
@@ -53,8 +68,12 @@ def test_service_processes_goals_serially(settings):
 def test_service_reports_failed_goal_and_persists_metadata(settings):
     def fake_run(goal, actual_settings, **kwargs):
         return SimpleNamespace(
-            achieved=False, reason="belum tercapai", project="demo", iterations=(),
-            files_written=0, response="",
+            achieved=False,
+            reason="belum tercapai",
+            project="demo",
+            iterations=(),
+            files_written=0,
+            response="",
         )
 
     service = AgentService(settings, run_goal=fake_run)
@@ -64,7 +83,13 @@ def test_service_reports_failed_goal_and_persists_metadata(settings):
         assert job.status == "failed"
         assert not job.achieved
         assert job.reason == "belum tercapai"
-        data = json.loads((settings.logs_dir / "jobs" / f"job-{job.id}.json").read_text())
+        path = settings.logs_dir / "jobs" / f"job-{job.id}.json"
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            data = json.loads(path.read_text())
+            if data["status"] == "failed":
+                break
+            time.sleep(0.01)
         assert data["status"] == "failed"
         assert "Goal gagal" not in json.dumps(data)
     finally:
@@ -106,11 +131,15 @@ def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
     service = AgentService(
         settings,
         run_goal=lambda goal, actual_settings, **kwargs: SimpleNamespace(
-            achieved=True, reason="ok", project="demo", iterations=(), files_written=1,
+            achieved=True,
+            reason="ok",
+            project="demo",
+            iterations=(),
+            files_written=1,
             response="selesai",
         ),
     )
-    server = create_server(settings, service)
+    server = create_server(replace(settings, service_port=_free_port()), service)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     service.start()
     thread.start()
@@ -143,6 +172,71 @@ def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
         service.stop()
 
 
+def test_service_menolak_bearer_huruf_kecil(monkeypatch, settings):
+    port = _free_port()
+    secured = replace(settings, service_host="127.0.0.1", service_port=port, service_token=_TOKEN)
+    service = AgentService(
+        secured,
+        run_goal=lambda *a, **k: SimpleNamespace(
+            achieved=True,
+            reason="ok",
+            project="demo",
+            iterations=(),
+            files_written=0,
+            response="",
+        ),
+    )
+    server = create_server(secured, service)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    service.start()
+    thread.start()
+    try:
+        reply = httpx.post(
+            f"http://127.0.0.1:{port}/goals",
+            json={"goal": "demo"},
+            headers={"Authorization": f"bearer {_TOKEN}"},
+            timeout=5,
+        )
+        assert reply.status_code == 202
+        wait_for(service, reply.json()["id"])
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.stop()
+
+
+def test_service_antrean_penuh_ditolak(settings):
+    service = AgentService(settings, run_goal=lambda *a, **k: None)
+    for index in range(100):
+        service.submit(f"Goal {index}")
+    with pytest.raises(QueueFullError, match="Antrean goal penuh"):
+        service.submit("Goal ke-101")
+
+
+def test_parse_goal_options_membatasi_iterasi():
+    assert parse_goal_options({"max_iterations": 50})["max_iterations"] == 50
+    with pytest.raises(ValueError, match="1..50"):
+        parse_goal_options({"max_iterations": 1000})
+    with pytest.raises(ValueError, match="1..10"):
+        parse_goal_options({"max_iterations": 11}, iteration_limit=10)
+
+
+def test_error_detail_hanya_di_log_bukan_di_api(settings):
+    def boom(*args, **kwargs):
+        raise ValueError("path rahasia /data/rahasia")
+
+    service = AgentService(settings, run_goal=boom)
+    service.start()
+    job = wait_for(service, service.submit("Goal").id)
+    service.stop()
+
+    assert job.status == "failed"
+    assert "path rahasia" in job.error  # detail internal
+    assert job.to_dict()["error"] == "Worker mengalami error tak terduga."
+    metadata = (settings.logs_dir / "jobs" / f"job-{job.id}.json").read_text()
+    assert "path rahasia" in metadata  # audit trail lokal tetap lengkap
+
+
 def test_service_rejects_empty_goal(settings):
     service = AgentService(settings, run_goal=lambda *args: None)
     with pytest.raises(ValueError, match="Goal"):
@@ -160,21 +254,21 @@ def _post(settings, path, body, token=None):
 
 
 def test_service_token_dan_opsi_goal(settings):
-    from dataclasses import replace
-
     seen = []
 
     def fake_run(goal, actual_settings, **kwargs):
         seen.append((goal, kwargs))
         return SimpleNamespace(
-            achieved=True, reason="ok", project="demo", iterations=(), files_written=0,
+            achieved=True,
+            reason="ok",
+            project="demo",
+            iterations=(),
+            files_written=0,
             response="",
         )
 
-    port = 18791
-    secured = replace(
-        settings, service_host="127.0.0.1", service_port=port, service_token="rahasia"
-    )
+    port = _free_port()
+    secured = replace(settings, service_host="127.0.0.1", service_port=port, service_token=_TOKEN)
     service = AgentService(secured, run_goal=fake_run)
     service.start()
     server = create_server(secured, service)
@@ -184,13 +278,13 @@ def test_service_token_dan_opsi_goal(settings):
         assert httpx.get(f"http://127.0.0.1:{port}/health", timeout=5).status_code == 200
         assert _post(secured, "/goals", {"goal": "x"}).status_code == 401
         assert _post(secured, "/goals", {"goal": "x"}, "salah").status_code == 401
-        invalid = _post(secured, "/goals", {"goal": "x", "max_iterations": 0}, "rahasia")
+        invalid = _post(secured, "/goals", {"goal": "x", "max_iterations": 0}, _TOKEN)
         assert invalid.status_code == 400
         reply = _post(
             secured,
             "/goals",
             {"goal": "g", "project": "api", "verify": ["pytest -q"], "require_files": ["main.py"]},
-            "rahasia",
+            _TOKEN,
         )
         assert reply.status_code == 202
         wait_for(service, reply.json()["id"])

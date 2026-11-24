@@ -17,6 +17,7 @@ TERMINAL_STATUSES = frozenset({"completed", "failed"})
 
 class ServiceError(RuntimeError):
     """Goal tidak dapat dikirim atau hasilnya tidak dapat diambil."""
+
     pass
 
 
@@ -111,8 +112,22 @@ def submit_goal(
 
     deadline = time.monotonic() + settings.service_submit_timeout_s
     last_progress: tuple[Any, Any, Any] | None = None
+    consecutive_errors = 0
     while True:
-        job = fetch(base_url, job_id, 30.0, **fetch_extra)
+        try:
+            job = fetch(base_url, job_id, 30.0, **fetch_extra)
+            consecutive_errors = 0
+        except ServiceError as exc:
+            # Job sudah diterima layanan; jangan kehilangan id hanya karena
+            # gangguan jaringan sesaat saat polling.
+            consecutive_errors += 1
+            if consecutive_errors >= 3 or time.monotonic() >= deadline:
+                raise ServiceError(
+                    f"Job {job_id}: gagal mengambil status ({exc}). "
+                    f"Cek dengan: coding-agent job {job_id}"
+                ) from exc
+            time.sleep(min(settings.service_poll_interval_s * consecutive_errors, 5.0))
+            continue
         progress_key = (job.get("status"), job.get("progress_seq"), job.get("progress"))
         if on_progress is not None and progress_key != last_progress:
             on_progress(job)
@@ -120,7 +135,17 @@ def submit_goal(
         if job.get("status") in TERMINAL_STATUSES:
             return job
         if time.monotonic() >= deadline:
-            raise ServiceError(f"Job {job_id} belum selesai setelah batas waktu.")
+            # Satu pengecekan terakhir sebelum menyerah.
+            try:
+                final = fetch(base_url, job_id, 30.0, **fetch_extra)
+            except ServiceError:
+                final = None
+            if final is not None and final.get("status") in TERMINAL_STATUSES:
+                return final
+            raise ServiceError(
+                f"Job {job_id} belum selesai setelah batas waktu. "
+                f"Cek dengan: coding-agent job {job_id}"
+            )
         time.sleep(settings.service_poll_interval_s)
 
 

@@ -41,6 +41,12 @@ def test_custom_image_supports_unrecognized_stack(settings):
     )
 
 
+def test_detect_python_fallback_from_extension(settings):
+    settings.workspace_dir.mkdir(parents=True)
+    (settings.workspace_dir / "hello.py").write_text("print('hi')\n")
+    assert detect_sandbox_image(settings.workspace_dir) == "python:3.13-slim"
+
+
 def test_unknown_stack_requires_explicit_image(settings):
     settings.workspace_dir.mkdir(parents=True)
     with pytest.raises(SandboxError, match="AGENT_SANDBOX_IMAGE"):

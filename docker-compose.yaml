@@ -51,17 +51,15 @@ services:
     command: ["ollama pull ${OLLAMA_MODEL:-qwen3.5:4b}"]
     restart: "no"
 
-  agent:
+  agent-1:
     build: .
     image: coding-agent:local
     depends_on:
       ollama-model:
         condition: service_completed_successfully
     command: serve
-    ports:
-      # Hanya loopback: siapa pun yang dapat mengirim goal dapat memicu eksekusi
-      # kode lewat agent. Ubah ke 0.0.0.0 hanya bersama AGENT_API_TOKEN.
-      - "127.0.0.1:${AGENT_SERVICE_PORT:-8765}:8765"
+    expose:
+      - "8765"
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
@@ -79,6 +77,9 @@ services:
       COMMAND_TIMEOUT_S: ${COMMAND_TIMEOUT_S:-300}
       AGENT_SANDBOX_IMAGE: ${AGENT_SANDBOX_IMAGE:-}
       AGENT_SANDBOX_NETWORK: ${AGENT_SANDBOX_NETWORK:-none}
+      AGENT_SANDBOX_MEMORY_MB: ${AGENT_SANDBOX_MEMORY_MB:-256}
+      AGENT_SANDBOX_CPUS: ${AGENT_SANDBOX_CPUS:-1}
+      AGENT_SANDBOX_PIDS_LIMIT: ${AGENT_SANDBOX_PIDS_LIMIT:-128}
       AGENT_SANDBOX_MIN_FREE_DISK_MB: ${AGENT_SANDBOX_MIN_FREE_DISK_MB:-256}
       AGENT_SANDBOX_DISK_QUOTA_MB: ${AGENT_SANDBOX_DISK_QUOTA_MB:-0}
       # Wajib: endpoint /goals dapat memicu agent menulis file dan menjalankan
@@ -89,6 +90,7 @@ services:
       AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
       AGENT_SERVICE_HOST: 0.0.0.0
       AGENT_SERVICE_PORT: 8765
+      AGENT_INSTANCE_ID: agent-1
       AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
     volumes:
       - ${JIRAN_ROOT:-${PWD}}/workspace:${JIRAN_ROOT:-${PWD}}/workspace
@@ -100,6 +102,8 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     group_add:
       - "${DOCKER_GID:-991}"
+    mem_limit: 256m
+    cpus: 1.0
     healthcheck:
       test:
         - CMD
@@ -110,5 +114,82 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  agent-2:
+    build: .
+    image: coding-agent:local
+    depends_on:
+      ollama-model:
+        condition: service_completed_successfully
+    command: serve
+    expose:
+      - "8765"
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:4b}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-300}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      MAX_CONTEXT_CHARS: ${MAX_CONTEXT_CHARS:-12000}
+      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-15}
+      MAX_AGENT_TOOL_CALLS: ${MAX_AGENT_TOOL_CALLS:-30}
+      MAX_GOAL_ITER: ${MAX_GOAL_ITER:-5}
+      MAX_GOAL_ITER_LIMIT: ${MAX_GOAL_ITER_LIMIT:-50}
+      REQUIRE_JUDGE_ON_FAST_PATH: ${REQUIRE_JUDGE_ON_FAST_PATH:-false}
+      MAX_FIX_ITER: ${MAX_FIX_ITER:-3}
+      COMMAND_TIMEOUT_S: ${COMMAND_TIMEOUT_S:-300}
+      AGENT_SANDBOX_IMAGE: ${AGENT_SANDBOX_IMAGE:-}
+      AGENT_SANDBOX_NETWORK: ${AGENT_SANDBOX_NETWORK:-none}
+      AGENT_SANDBOX_MEMORY_MB: ${AGENT_SANDBOX_MEMORY_MB:-256}
+      AGENT_SANDBOX_CPUS: ${AGENT_SANDBOX_CPUS:-1}
+      AGENT_SANDBOX_PIDS_LIMIT: ${AGENT_SANDBOX_PIDS_LIMIT:-128}
+      AGENT_SANDBOX_MIN_FREE_DISK_MB: ${AGENT_SANDBOX_MIN_FREE_DISK_MB:-256}
+      AGENT_SANDBOX_DISK_QUOTA_MB: ${AGENT_SANDBOX_DISK_QUOTA_MB:-0}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:?AGENT_API_TOKEN wajib diisi, min. 32 karakter}
+      WORKSPACE_DIR: ${JIRAN_ROOT:-${PWD}}/workspace
+      AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
+      AGENT_SERVICE_HOST: 0.0.0.0
+      AGENT_SERVICE_PORT: 8765
+      AGENT_INSTANCE_ID: agent-2
+      AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
+    volumes:
+      - ${JIRAN_ROOT:-${PWD}}/workspace:${JIRAN_ROOT:-${PWD}}/workspace
+      - ${JIRAN_ROOT:-${PWD}}/logs:${JIRAN_ROOT:-${PWD}}/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-991}"
+    mem_limit: 256m
+    cpus: 1.0
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  agent-lb:
+    image: nginx:alpine
+    depends_on:
+      agent-1:
+        condition: service_healthy
+      agent-2:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${AGENT_SERVICE_PORT:-8765}:8765"
+    volumes:
+      - ./deploy/nginx-agent.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8765/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 

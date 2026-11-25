@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -93,6 +94,7 @@ class Settings:
     service_host: str = "127.0.0.1"
     service_port: int = 8765
     service_url: str = "http://localhost:8765"
+    service_instance_id: str = "agent"
     service_submit_timeout_s: int = 1800
     service_poll_interval_s: float = 1.0
     service_token: str | None = None
@@ -143,6 +145,8 @@ class Settings:
             raise SettingsError("AGENT_CONTAINER_NETWORK harus 'bridge' atau 'host'")
         if not self.service_host.strip() or not self.service_url.strip():
             raise SettingsError("AGENT_SERVICE_HOST dan AGENT_SERVICE_URL tidak boleh kosong")
+        if not re.fullmatch(r"[a-z0-9-]+", self.service_instance_id):
+            raise SettingsError("AGENT_INSTANCE_ID hanya boleh berisi huruf kecil, angka, dan '-'")
         parsed_url = urlsplit(self.service_url)
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise SettingsError("AGENT_SERVICE_URL harus berupa URL http/https yang valid")
@@ -223,6 +227,7 @@ class Settings:
             service_host=_get("AGENT_SERVICE_HOST", cls.service_host),
             service_port=_env_int("AGENT_SERVICE_PORT", cls.service_port),
             service_url=_get("AGENT_SERVICE_URL", cls.service_url).rstrip("/"),
+            service_instance_id=_get("AGENT_INSTANCE_ID", cls.service_instance_id),
             service_submit_timeout_s=_env_int(
                 "SERVICE_SUBMIT_TIMEOUT_S", cls.service_submit_timeout_s
             ),

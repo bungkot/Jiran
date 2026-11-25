@@ -111,6 +111,8 @@ def test_invalid_service_settings_are_rejected(settings):
         replace(settings, service_port=0)
     with pytest.raises(SettingsError, match="SERVICE_SUBMIT_TIMEOUT_S"):
         replace(settings, service_submit_timeout_s=0)
+    with pytest.raises(SettingsError, match="AGENT_INSTANCE_ID"):
+        replace(settings, service_instance_id="invalid/id")
 
 
 class _Response:

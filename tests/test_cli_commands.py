@@ -116,7 +116,13 @@ def test_job_status_menentukan_exit_code(monkeypatch, settings, capsys):
     monkeypatch.setattr(cli.Settings, "load", lambda: settings)
     jobs = iter(
         [
-            {"id": "1", "status": "completed", "achieved": True, "reason": "ok"},
+            {
+                "id": "1",
+                "status": "completed",
+                "achieved": True,
+                "reason": "ok",
+                "container_id": "container-abc",
+            },
             {"id": "2", "status": "completed", "achieved": False, "reason": "belum"},
             {"id": "3", "status": "failed", "error": "boom"},
             {"id": "4", "status": "running", "progress": "Agent dimulai"},
@@ -125,7 +131,9 @@ def test_job_status_menentukan_exit_code(monkeypatch, settings, capsys):
     monkeypatch.setattr(cli, "fetch_job", lambda *args: next(jobs))
 
     assert cli.main(["job", "1"]) == 0
-    assert "TERCAPAI" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "TERCAPAI" in output
+    assert "container-abc" in output
     assert cli.main(["job", "2"]) == 1
     assert "BELUM TERCAPAI" in capsys.readouterr().out
     assert cli.main(["job", "3"]) == 1
@@ -151,7 +159,8 @@ def test_submit_meneruskan_opsi_dan_no_wait(monkeypatch, settings, capsys):
         cli,
         "submit_goal",
         lambda goal, actual_settings, **kwargs: (
-            seen.update(goal=goal, kwargs=kwargs) or {"id": "job-9", "status": "queued"}
+            seen.update(goal=goal, kwargs=kwargs)
+            or {"id": "job-9", "container_id": "abc123", "status": "queued"}
         ),
     )
 
@@ -182,7 +191,9 @@ def test_submit_meneruskan_opsi_dan_no_wait(monkeypatch, settings, capsys):
         "allow_no_changes": True,
     }
     assert seen["kwargs"]["wait"] is False
-    assert "job-9" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "job-9" in output
+    assert "abc123" in output
 
 
 def test_submit_gagal_dilaporkan(monkeypatch, settings, capsys):

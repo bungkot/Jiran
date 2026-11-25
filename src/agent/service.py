@@ -7,12 +7,17 @@ goal bersamaan tanpa dua proyek dikerjakan dalam waktu yang sama.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
+import os
 import queue
 import signal
+import socket
 import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
@@ -21,7 +26,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .config import Settings
-from .goal import GoalAcceptance, GoalError, run_goal_loop
+from .goal import GoalAcceptance, GoalError, project_slug, run_goal_loop
 from .progress import summarize_event
 
 TERMINAL_STATUSES = frozenset({"completed", "failed"})
@@ -107,6 +112,7 @@ def goal_kwargs(options: dict[str, Any]) -> dict[str, Any]:
 class Job:
     id: str
     goal: str
+    container_id: str = ""
     status: str = "queued"
     created_at: str = ""
     started_at: str | None = None
@@ -127,6 +133,7 @@ class Job:
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
+            "container_id": self.container_id,
             "goal": self.goal,
             "status": self.status,
             "created_at": self.created_at,
@@ -157,15 +164,18 @@ class AgentService:
     def __init__(self, settings: Settings, run_goal: Any | None = None) -> None:
         self.settings = settings
         self._run_goal = run_goal or run_goal_loop
+        self.container_id = socket.gethostname()
         self._queue: queue.Queue[Job] = queue.Queue(maxsize=_MAX_QUEUED_JOBS)
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._jobs_dir = settings.logs_dir.resolve() / "jobs"
+        self._locks_dir = settings.logs_dir.resolve() / "project-locks"
         self._stop = threading.Event()
         self._worker = threading.Thread(target=self._work, name="goal-worker", daemon=True)
 
     def start(self) -> None:
         self._jobs_dir.mkdir(parents=True, exist_ok=True)
+        self._locks_dir.mkdir(parents=True, exist_ok=True)
         self._worker.start()
 
     def stop(self) -> None:
@@ -182,8 +192,9 @@ class AgentService:
             if self._queue.qsize() + running >= _MAX_QUEUED_JOBS:
                 raise QueueFullError("Antrean goal penuh; coba lagi nanti.")
             job = Job(
-                id=uuid.uuid4().hex,
+                id=f"{self.settings.service_instance_id}_{uuid.uuid4().hex}",
                 goal=target,
+                container_id=self.container_id,
                 created_at=_now(),
                 options=dict(options or {}),
             )
@@ -234,6 +245,38 @@ class AgentService:
             job.progress_seq += 1
         self._persist(job)
 
+    @contextmanager
+    def _project_lock(self, job: Job) -> Iterator[None]:
+        project = job.options.get("project")
+        key = project if isinstance(project, str) else project_slug(job.goal)
+        lock_path = self._locks_dir / f"{hashlib.sha256(key.encode()).hexdigest()}.lock"
+        lock_file = lock_path.open("a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                lock_file.seek(0, os.SEEK_END)
+                if lock_file.tell() == 0:
+                    lock_file.write(b"\0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]
+                try:
+                    yield
+                finally:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_file.close()
+
     def _work(self) -> None:
         while not self._stop.is_set():
             try:
@@ -249,12 +292,13 @@ class AgentService:
                     job.progress_seq += 1
                 self._persist(job)
                 publish_progress = partial(self._publish_progress, job)
-                result = self._run_goal(
-                    job.goal,
-                    self.settings,
-                    **goal_kwargs(job.options),
-                    on_event=publish_progress,
-                )
+                with self._project_lock(job):
+                    result = self._run_goal(
+                        job.goal,
+                        self.settings,
+                        **goal_kwargs(job.options),
+                        on_event=publish_progress,
+                    )
                 with self._lock:
                     job.achieved = bool(result.achieved)
                     job.reason = result.reason
@@ -363,7 +407,15 @@ class _GoalHandler(BaseHTTPRequestHandler):
         except QueueFullError as exc:
             self._send(429, {"error": str(exc)})
             return
-        self._send(202, {"id": job.id, "status": job.status, "queue": self.service.stats()})
+        self._send(
+            202,
+            {
+                "id": job.id,
+                "container_id": job.container_id,
+                "status": job.status,
+                "queue": self.service.stats(),
+            },
+        )
 
 
 def create_server(settings: Settings, service: AgentService) -> ThreadingHTTPServer:

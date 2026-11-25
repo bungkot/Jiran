@@ -10,7 +10,9 @@ Nama paket Python-nya `coding-agent`; titik masuk CLI `coding-agent`.
 CLI / klien HTTP
       │
       ▼
-Service standby (antrean tunggal, satu worker)
+Load balancer (round-robin)
+      ├── Agent service 1 (antrean + satu worker)
+      └── Agent service 2 (antrean + satu worker)
       │
       ▼
 Goal loop  ── planner heuristik ──▶ todo per file
@@ -32,7 +34,7 @@ Modul utama ada di `src/agent/`:
 | `llm.py` | `ChatOllama` + ping |
 | `agent.py` | Worker tool-calling, compaction, retry, verifikasi |
 | `goal.py` | Goal loop, planner, acceptance, judge, deteksi mandek |
-| `service.py` | HTTP server + antrean + satu worker |
+| `service.py` | HTTP server + antrean + satu worker per container |
 | `service_client.py` | Klien submit/poll |
 | `container_client.py` | Menjalankan goal di dalam image agent |
 | `tools/` | Sandbox, file/edit tools, Docker runner |
@@ -57,7 +59,8 @@ Compose canonical ada di `apps/Jiran/docker-compose.yaml`. Dari folder proyek:
 ```bash
 cd apps/Jiran
 export AGENT_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-docker compose up -d
+# Saat migrasi dari service agent tunggal, pastikan antrean lama kosong:
+docker compose up -d --remove-orphans
 uv run coding-agent submit "Buat kalkulator CLI"
 uv run coding-agent job <id>
 ```
@@ -65,6 +68,13 @@ uv run coding-agent job <id>
 `AGENT_API_TOKEN` **wajib** di Compose karena service bind ke `0.0.0.0` di dalam
 container dan endpoint `/goals` dapat memicu agent menulis file serta menjalankan
 perintah. Token minimal 32 karakter.
+
+Compose menjalankan dua worker agent di belakang Nginx. Request submit dibagi
+bergiliran; ID job memiliki prefix worker agar polling berikutnya tetap mencapai
+container pemilik antrean. CLI menampilkan ID container pada submit/status.
+Kedua worker berbagi workspace dan log, tetapi job/antrean berada di memori
+masing-masing container dan hilang saat container dimulai ulang. Job yang
+menargetkan proyek yang sama diserialisasi dengan file lock bersama.
 
 API Ollama dipublish hanya ke loopback host pada port `OLLAMA_PORT` (default
 `11434`) agar CLI dan benchmark lokal dapat mengaksesnya tanpa mengeksposnya ke
@@ -138,7 +148,9 @@ Lihat `.env.example` untuk daftar lengkap. Yang sering diubah:
 | `MAX_GOAL_ITER` / `MAX_GOAL_ITER_LIMIT` | `5` / `50` | Batas putaran |
 | `REQUIRE_JUDGE_ON_FAST_PATH` | `false` | `true` = judge tetap dipanggil walau verifikasi mesin lulus |
 | `AGENT_SANDBOX_NETWORK` | `none` | `bridge` hanya bila memang perlu |
+| `AGENT_SANDBOX_MEMORY_MB` / `AGENT_SANDBOX_CPUS` | `256` / `1` (Compose) | Batas per sandbox; naikkan hanya jika RAM tersedia |
 | `AGENT_API_TOKEN` | kosong | Wajib bila bind non-loopback |
+| `AGENT_SERVICE_PORT` | `8765` | Port load balancer di host |
 | `AGENT_SANDBOX_MIN_FREE_DISK_MB` | `256` | Tolak tulis bila disk hampir penuh |
 | `AGENT_SANDBOX_DISK_QUOTA_MB` | `0` | Kuota writable layer container |
 

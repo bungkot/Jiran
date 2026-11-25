@@ -65,6 +65,48 @@ def test_service_processes_goals_serially(settings):
         service.stop()
 
 
+def test_service_instances_serialize_jobs_for_same_project(settings):
+    first_started = threading.Event()
+    release_first = threading.Event()
+    entered = []
+    guard = threading.Lock()
+
+    def fake_run(goal, actual_settings, **kwargs):
+        with guard:
+            entered.append(goal)
+        if goal == "pertama":
+            first_started.set()
+            release_first.wait(timeout=3)
+        return SimpleNamespace(
+            achieved=True,
+            reason="selesai",
+            project="demo",
+            iterations=(),
+            files_written=1,
+            response="ok",
+        )
+
+    first = AgentService(replace(settings, service_instance_id="agent-1"), fake_run)
+    second = AgentService(replace(settings, service_instance_id="agent-2"), fake_run)
+    first.start()
+    second.start()
+    try:
+        first_job = first.submit("pertama", {"project": "demo"})
+        assert first_started.wait(timeout=1)
+        second_job = second.submit("kedua", {"project": "demo"})
+        time.sleep(0.1)
+        assert entered == ["pertama"]
+
+        release_first.set()
+        assert wait_for(first, first_job.id).status == "completed"
+        assert wait_for(second, second_job.id).status == "completed"
+        assert entered == ["pertama", "kedua"]
+    finally:
+        release_first.set()
+        first.stop()
+        second.stop()
+
+
 def test_service_reports_failed_goal_and_persists_metadata(settings):
     def fake_run(goal, actual_settings, **kwargs):
         return SimpleNamespace(
@@ -153,6 +195,9 @@ def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
             submitted = client.post(f"{base}/goals", json={"goal": "Buat demo"})
             assert submitted.status_code == 202
             job_id = submitted.json()["id"]
+            assert job_id.startswith(f"{settings.service_instance_id}_")
+            assert len(job_id.rsplit("_", 1)[1]) == 32
+            assert submitted.json()["container_id"] == service.container_id
 
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
@@ -162,6 +207,7 @@ def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
                     break
                 time.sleep(0.01)
             assert detail.json()["achieved"] is True
+            assert detail.json()["container_id"] == service.container_id
 
             invalid = client.post(f"{base}/goals", json={"goal": "  "})
             assert invalid.status_code == 400

@@ -228,6 +228,8 @@ def _print_job(job: dict[str, Any]) -> bool:
         f"Proyek: {job.get('project') or '-'} | "
         f"Putaran: {job.get('iterations', 0)} | File ditulis: {job.get('files_written', 0)}"
     )
+    if job.get("container_id"):
+        console.print(f"Container: [cyan]{job['container_id']}[/]")
     if job.get("status") in {"completed", "failed"}:
         console.print(
             "Tujuan:",
@@ -268,6 +270,8 @@ def cmd_submit(
             f"Goal diterima. Job: [cyan]{job.get('id', '?')}[/] — "
             f"cek dengan: coding-agent job {job.get('id', '?')}"
         )
+        if job.get("container_id"):
+            console.print(f"Container: [cyan]{job['container_id']}[/]")
         return True
     return _print_job(job)
 

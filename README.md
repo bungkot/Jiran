@@ -72,6 +72,9 @@ perintah. Token minimal 32 karakter.
 Compose menjalankan dua worker agent di belakang Nginx. Request submit dibagi
 bergiliran; ID job memiliki prefix worker agar polling berikutnya tetap mencapai
 container pemilik antrean. CLI menampilkan ID container pada submit/status.
+CLI di host memakai `AGENT_SERVICE_URL=http://localhost:8765` (port Nginx yang
+dipublish); CLI yang dijalankan dari container memakai `http://agent-lb:8765`.
+Dengan begitu CLI tidak perlu memilih worker atau mengetahui alamat container.
 Kedua worker berbagi workspace dan log, tetapi job/antrean berada di memori
 masing-masing container dan hilang saat container dimulai ulang. Job yang
 menargetkan proyek yang sama diserialisasi dengan file lock bersama.

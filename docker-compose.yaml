@@ -90,6 +90,7 @@ services:
       AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
       AGENT_SERVICE_HOST: 0.0.0.0
       AGENT_SERVICE_PORT: 8765
+      AGENT_SERVICE_URL: http://agent-lb:8765
       AGENT_INSTANCE_ID: agent-1
       AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
     volumes:
@@ -152,6 +153,7 @@ services:
       AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
       AGENT_SERVICE_HOST: 0.0.0.0
       AGENT_SERVICE_PORT: 8765
+      AGENT_SERVICE_URL: http://agent-lb:8765
       AGENT_INSTANCE_ID: agent-2
       AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
     volumes:

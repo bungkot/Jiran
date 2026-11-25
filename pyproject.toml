@@ -27,7 +27,7 @@ coding-agent = "agent.main:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]
 markers = ["integration: butuh Ollama sungguhan (set RUN_OLLAMA=1)"]
 

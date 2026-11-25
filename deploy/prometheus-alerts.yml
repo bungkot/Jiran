@@ -1,0 +1,30 @@
+groups:
+  - name: jiran-sla
+    interval: 30s
+    rules:
+      - alert: JiranOllamaDown
+        expr: up{job="ollama"} == 0
+        for: 30s
+        labels:
+          severity: critical
+      - alert: JiranAgentDown
+        expr: up{job="jiran-agent"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker agent {{ $labels.instance }} down (site {{ $labels.site }})"
+      - alert: JiranAgentJobsFailing
+        expr: sum by (agent_id) (increase(jiran_agent_jobs_finished_total{status!="completed"}[15m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent {{ $labels.agent_id }} punya job gagal dalam 15m terakhir"
+      - alert: JiranAgentQueueBacklog
+        expr: jiran_agent_queue_size > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent {{ $labels.instance }} antrean ada {{ $value }} job"

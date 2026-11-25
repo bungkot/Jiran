@@ -2,10 +2,27 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  # Alert SLA: Ollama down, agent down, failure rate tinggi, backlog antrean.
+  # Path relatif terhadap file ini (di /etc/prometheus/prometheus.yml di dalam
+  # container, sesuai volume-mount di docker-compose.yaml).
+  - alerts.yml
+
 scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["prometheus:9090"]
+
+  # Ketersediaan Ollama: Ollama 0.40.18 tidak menyediakan metrik Prometheus
+  # native (/metrics 404), jadi kita monitoring ketersediaan server via
+  # exporter mini (scripts/ollama_exporter.py) di ollama-exporter:9191 —
+  # `up{job="ollama-exporter"}` = 1 saat Ollama merespons HTTP 200 pada
+  # /api/version; `ollama_up` / `ollama_response_ms` dari exporter itu sendiri.
+  - job_name: ollama-exporter
+    static_configs:
+      - targets: ["ollama-exporter:9191"]
+        labels:
+          site: local
 
   - job_name: jiran-agent
     static_configs:

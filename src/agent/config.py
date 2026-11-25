@@ -69,7 +69,7 @@ def _env_path(name: str, default: str) -> Path:
 @dataclass(frozen=True)
 class Settings:
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3.5:4b"
+    ollama_model: str = "qwen3.5:2b-q4_K_M"
     llm_temperature: float = 0.0
     llm_timeout_s: float = 180.0
     llm_max_retries: int = 2

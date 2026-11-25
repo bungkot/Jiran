@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: Jiran
+    orgId: 1
+    folder: Jiran
+    type: file
+    disableDeletion: true
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards

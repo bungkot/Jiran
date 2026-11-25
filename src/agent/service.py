@@ -15,6 +15,7 @@ import queue
 import signal
 import socket
 import threading
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -24,6 +25,15 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlsplit
+
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 from .config import Settings
 from .goal import GoalAcceptance, GoalError, project_slug, run_goal_loop
@@ -168,6 +178,34 @@ class AgentService:
         self._queue: queue.Queue[Job] = queue.Queue(maxsize=_MAX_QUEUED_JOBS)
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        self._metrics_registry = CollectorRegistry()
+        self._jobs_submitted = Counter(
+            "jiran_agent_jobs_submitted_total",
+            "Total jobs accepted by this agent.",
+            registry=self._metrics_registry,
+        )
+        self._jobs_finished = Counter(
+            "jiran_agent_jobs_finished_total",
+            "Total jobs finished by this agent.",
+            labelnames=("status",),
+            registry=self._metrics_registry,
+        )
+        self._queue_size = Gauge(
+            "jiran_agent_queue_size",
+            "Number of jobs waiting in this agent's queue.",
+            registry=self._metrics_registry,
+        )
+        self._running_jobs = Gauge(
+            "jiran_agent_running_jobs",
+            "Number of jobs currently running on this agent.",
+            registry=self._metrics_registry,
+        )
+        self._job_duration = Histogram(
+            "jiran_agent_job_duration_seconds",
+            "Time spent processing a job, excluding time in the queue.",
+            labelnames=("status",),
+            registry=self._metrics_registry,
+        )
         self._jobs_dir = settings.logs_dir.resolve() / "jobs"
         self._locks_dir = settings.logs_dir.resolve() / "project-locks"
         self._stop = threading.Event()
@@ -200,6 +238,7 @@ class AgentService:
             )
             self._jobs[job.id] = job
             self._queue.put(job)
+            self._jobs_submitted.inc()
         self._persist(job)
         return job
 
@@ -216,6 +255,12 @@ class AgentService:
         with self._lock:
             running = sum(job.status == "running" for job in self._jobs.values())
         return {"queued": self._queue.qsize(), "running": running}
+
+    def prometheus_metrics(self) -> bytes:
+        stats = self.stats()
+        self._queue_size.set(stats["queued"])
+        self._running_jobs.set(stats["running"])
+        return generate_latest(self._metrics_registry)
 
     def _persist(self, job: Job) -> None:
         """Tulis metadata secara atomik.
@@ -283,6 +328,7 @@ class AgentService:
                 job = self._queue.get(timeout=0.5)
             except queue.Empty:
                 continue
+            started = time.monotonic()
             try:
                 with self._lock:
                     job.status = "running"
@@ -323,6 +369,8 @@ class AgentService:
                 with self._lock:
                     job.finished_at = _now()
                 self._persist(job)
+                self._jobs_finished.labels(status=job.status).inc()
+                self._job_duration.labels(status=job.status).observe(time.monotonic() - started)
                 self._queue.task_done()
 
 
@@ -336,6 +384,14 @@ class _GoalHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_metrics(self) -> None:
+        body = self.service.prometheus_metrics()
+        self.send_response(200)
+        self.send_header("Content-Type", CONTENT_TYPE_LATEST)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -358,6 +414,8 @@ class _GoalHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/health":
             self._send(200, {"status": "ok", **self.service.stats()})
+        elif path == "/metrics":
+            self._send_metrics()
         elif not self._authorized():
             return
         elif path == "/goals":

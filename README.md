@@ -87,6 +87,27 @@ Image Ollama default adalah `ollama/ollama:latest`. Untuk Docker dengan ruang
 penyimpanan terbatas atau host tanpa GPU, `OLLAMA_IMAGE=ollama/ollama:rocm`
 memilih image yang lebih kecil; backend CPU tetap tersedia.
 
+### Monitoring Prometheus dan Grafana (opsional)
+
+Aktifkan hanya saat dibutuhkan:
+
+```bash
+docker compose --profile monitoring up -d
+```
+
+Grafana tersedia di `http://localhost:3000` (dashboard Jiran sudah disediakan);
+Prometheus tersedia di `http://localhost:9090`. Kedua port hanya bind ke
+loopback host. Dashboard dapat dilihat tanpa login, tetapi aksesnya read-only.
+Prometheus menyimpan data selama 7 hari.
+
+Prometheus mengumpulkan metrik antrean, job selesai, dan durasi dari kedua agent,
+serta metrik CPU, memori, dan filesystem host dari Node Exporter. Endpoint
+`/metrics` hanya tersedia di jaringan internal Compose dan diblokir oleh Nginx.
+Node Exporter memerlukan mount read-only `/`, `/proc`, dan `/sys` untuk membaca
+metrik host. Batas memori container monitoring adalah 896 MiB total; hentikan
+saat tidak diperlukan dengan
+`docker compose stop grafana prometheus node-exporter`.
+
 ## Perintah CLI
 
 | Perintah | Fungsi |
@@ -144,7 +165,7 @@ Lihat `.env.example` untuk daftar lengkap. Yang sering diubah:
 |---|---|---|
 | `OLLAMA_IMAGE` | `ollama/ollama:latest` | Image runtime Ollama; `ollama/ollama:rocm` lebih kecil untuk storage terbatas |
 | `OLLAMA_PORT` | `11434` | Port API Ollama host; bind hanya ke `127.0.0.1` |
-| `OLLAMA_MODEL` | `qwen3.5:4b` | Model reasoning; butuh tool calling |
+| `OLLAMA_MODEL` | `qwen3.5:2b-q4_K_M` | Model lokal default; varian 4B lebih kuat tetapi lebih besar |
 | `OLLAMA_NUM_CTX` | `8192` | Sesuaikan dengan RAM host |
 | `MAX_CONTEXT_CHARS` | `12000` | Anggaran total riwayat pesan |
 | `MAX_AGENT_STEPS` / `MAX_AGENT_TOOL_CALLS` | `15` / `30` | Batas worker |
@@ -174,7 +195,7 @@ CI menjalankan gate di atas pada Python 3.11 dan 3.13. Tes integrasi
 Benchmark model:
 
 ```bash
-python scripts/benchmark_models.py qwen3.5:4b
+python scripts/benchmark_models.py qwen3.5:2b-q4_K_M
 ```
 
 Skrip mengembalikan exit code 1 bila ada tugas/model yang gagal sehingga bisa

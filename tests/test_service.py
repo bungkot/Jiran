@@ -209,6 +209,13 @@ def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
             assert detail.json()["achieved"] is True
             assert detail.json()["container_id"] == service.container_id
 
+            metrics = client.get(f"{base}/metrics")
+            assert metrics.status_code == 200
+            assert "text/plain" in metrics.headers["content-type"]
+            assert b"jiran_agent_jobs_submitted_total 1.0" in metrics.content
+            assert b'jiran_agent_jobs_finished_total{status="completed"} 1.0' in metrics.content
+            assert b"jiran_agent_queue_size 0.0" in metrics.content
+
             invalid = client.post(f"{base}/goals", json={"goal": "  "})
             assert invalid.status_code == 400
             assert client.get(f"{base}/goals/tidak-ada").status_code == 404

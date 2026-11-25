@@ -66,6 +66,10 @@ uv run coding-agent job <id>
 container dan endpoint `/goals` dapat memicu agent menulis file serta menjalankan
 perintah. Token minimal 32 karakter.
 
+API Ollama dipublish hanya ke loopback host pada port `OLLAMA_PORT` (default
+`11434`) agar CLI dan benchmark lokal dapat mengaksesnya tanpa mengeksposnya ke
+jaringan.
+
 Image Ollama default adalah `ollama/ollama:latest`. Untuk Docker dengan ruang
 penyimpanan terbatas atau host tanpa GPU, `OLLAMA_IMAGE=ollama/ollama:rocm`
 memilih image yang lebih kecil; backend CPU tetap tersedia.
@@ -126,6 +130,7 @@ Lihat `.env.example` untuk daftar lengkap. Yang sering diubah:
 | Env | Default | Catatan |
 |---|---|---|
 | `OLLAMA_IMAGE` | `ollama/ollama:latest` | Image runtime Ollama; `ollama/ollama:rocm` lebih kecil untuk storage terbatas |
+| `OLLAMA_PORT` | `11434` | Port API Ollama host; bind hanya ke `127.0.0.1` |
 | `OLLAMA_MODEL` | `qwen3.5:4b` | Model reasoning; butuh tool calling |
 | `OLLAMA_NUM_CTX` | `8192` | Sesuaikan dengan RAM host |
 | `MAX_CONTEXT_CHARS` | `12000` | Anggaran total riwayat pesan |

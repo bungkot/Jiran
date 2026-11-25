@@ -10,7 +10,7 @@
 
 services:
   ollama:
-    image: ollama/ollama:latest
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
     volumes:
       - ${OLLAMA_MODELS_DIR:-${HOME}/.ollama}:/root/.ollama
     expose:
@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
 
   ollama-model:
-    image: ollama/ollama:latest
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
     depends_on:
       ollama:
         condition: service_healthy

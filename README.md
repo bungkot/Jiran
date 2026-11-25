@@ -66,6 +66,10 @@ uv run coding-agent job <id>
 container dan endpoint `/goals` dapat memicu agent menulis file serta menjalankan
 perintah. Token minimal 32 karakter.
 
+Image Ollama default adalah `ollama/ollama:latest`. Untuk Docker dengan ruang
+penyimpanan terbatas atau host tanpa GPU, `OLLAMA_IMAGE=ollama/ollama:rocm`
+memilih image yang lebih kecil; backend CPU tetap tersedia.
+
 ## Perintah CLI
 
 | Perintah | Fungsi |
@@ -121,6 +125,7 @@ Lihat `.env.example` untuk daftar lengkap. Yang sering diubah:
 
 | Env | Default | Catatan |
 |---|---|---|
+| `OLLAMA_IMAGE` | `ollama/ollama:latest` | Image runtime Ollama; `ollama/ollama:rocm` lebih kecil untuk storage terbatas |
 | `OLLAMA_MODEL` | `qwen3.5:4b` | Model reasoning; butuh tool calling |
 | `OLLAMA_NUM_CTX` | `8192` | Sesuaikan dengan RAM host |
 | `MAX_CONTEXT_CHARS` | `12000` | Anggaran total riwayat pesan |

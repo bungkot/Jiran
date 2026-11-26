@@ -3,9 +3,19 @@ export interface AgentAcceptedJob {
   status: string;
 }
 
+export interface AgentJobSummary {
+  id: string;
+  status: string;
+  goal: string;
+  created_at: string;
+  finished_at?: string | null;
+}
+
 export interface AgentJobSnapshot {
   id: string;
   status: string;
+  goal?: string;
+  created_at?: string;
   progress?: string;
   progress_seq?: number;
   started_at?: string | null;
@@ -39,6 +49,8 @@ function isJobSnapshot(value: unknown): value is AgentJobSnapshot {
     ["queued", "running", "cancelling", "completed", "failed", "cancelled"].includes(
       String(value.status),
     ) &&
+    (value.goal === undefined || typeof value.goal === "string") &&
+    (value.created_at === undefined || typeof value.created_at === "string") &&
     (value.progress === undefined || typeof value.progress === "string") &&
     (value.progress_seq === undefined ||
       typeof value.progress_seq === "number") &&
@@ -57,6 +69,29 @@ function isJobSnapshot(value: unknown): value is AgentJobSnapshot {
     (value.files === undefined ||
       (Array.isArray(value.files) &&
         value.files.every((file) => typeof file === "string")))
+  );
+}
+
+function isJobSummary(value: unknown): value is AgentJobSummary {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    ["queued", "running", "cancelling", "completed", "failed", "cancelled"].includes(
+      String(value.status),
+    ) &&
+    typeof value.goal === "string" &&
+    typeof value.created_at === "string" &&
+    (value.finished_at === undefined ||
+      value.finished_at === null ||
+      typeof value.finished_at === "string")
+  );
+}
+
+function isJobList(value: unknown): value is { jobs: AgentJobSummary[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.jobs) &&
+    value.jobs.every(isJobSummary)
   );
 }
 
@@ -103,6 +138,25 @@ export async function submitAgentGoal(
     cache: "no-store",
   });
   return parseResponse(response, isAcceptedJob);
+}
+
+export async function listAgentJobs(): Promise<AgentJobSummary[]> {
+  const { baseUrl, token } = agentConfig();
+  const response = await fetch(`${baseUrl}/goals`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(10_000),
+    cache: "no-store",
+  });
+  const payload = await parseResponse(response, isJobList);
+  return payload.jobs
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map(({ id, status, goal, created_at, finished_at }) => ({
+      id,
+      status,
+      goal,
+      created_at,
+      finished_at,
+    }));
 }
 
 export async function getAgentJob(

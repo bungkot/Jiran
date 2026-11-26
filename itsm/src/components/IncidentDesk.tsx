@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import AgentPlayground from "@/components/AgentPlayground";
 import type { Ticket } from "@/lib/tickets";
 
 const STATUS_LABELS: Record<Ticket["status"], string> = {
@@ -17,6 +16,12 @@ const SEVERITY_LABELS: Record<NonNullable<Ticket["severity"]>, string> = {
   high: "Tinggi",
 };
 
+const MESSAGE_ROLE_LABELS: Record<Ticket["messages"][number]["role"], string> = {
+  user: "Pelapor",
+  agent: "Agent",
+  system: "Sistem",
+};
+
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("id-ID", {
     dateStyle: "medium",
@@ -24,33 +29,71 @@ function formatTime(value: string): string {
   }).format(new Date(value));
 }
 
-function isTicket(value: unknown): value is Ticket {
-  if (typeof value !== "object" || value === null) return false;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isTicketMessage(
+  value: unknown,
+): value is Ticket["messages"][number] {
   return (
-    "id" in value &&
+    isRecord(value) &&
     typeof value.id === "string" &&
-    "title" in value &&
+    ["user", "agent", "system"].includes(String(value.role)) &&
+    typeof value.content === "string" &&
+    typeof value.createdAt === "string"
+  );
+}
+
+function isTicketTransaction(
+  value: unknown,
+): value is Ticket["transactions"][number] {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    typeof value.detail === "string" &&
+    typeof value.createdAt === "string"
+  );
+}
+
+function isTicketJob(value: unknown): value is Ticket["jobs"][number] {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.status === "string" &&
+    typeof value.progress === "string" &&
+    typeof value.progressSeq === "number" &&
+    typeof value.createdAt === "string" &&
+    (value.startedAt === undefined || typeof value.startedAt === "string") &&
+    (value.finishedAt === undefined || typeof value.finishedAt === "string")
+  );
+}
+
+function isTicket(value: unknown): value is Ticket {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
     typeof value.title === "string" &&
-    "status" in value &&
     ["open", "in_progress", "resolved", "failed"].includes(
       String(value.status),
     ) &&
-    (!("severity" in value) ||
-      value.severity === undefined ||
+    (value.severity === undefined ||
       ["low", "medium", "high"].includes(String(value.severity))) &&
-    "updatedAt" in value &&
+    typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&
-    "messages" in value &&
     Array.isArray(value.messages) &&
-    "transactions" in value &&
+    value.messages.every(isTicketMessage) &&
     Array.isArray(value.transactions) &&
-    "jobs" in value &&
-    Array.isArray(value.jobs)
+    value.transactions.every(isTicketTransaction) &&
+    Array.isArray(value.jobs) &&
+    value.jobs.every(isTicketJob)
   );
 }
 
 export default function IncidentDesk() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -64,6 +107,11 @@ export default function IncidentDesk() {
       throw new Error("Respons daftar insiden tidak valid.");
     }
     setTickets(payload);
+    setSelectedId((current) =>
+      current && payload.some((ticket) => ticket.id === current)
+        ? current
+        : (payload[0]?.id ?? null),
+    );
   }, []);
 
   useEffect(() => {
@@ -90,15 +138,18 @@ export default function IncidentDesk() {
     };
   }, [refreshTickets]);
 
+  const selectedTicket =
+    tickets.find((ticket) => ticket.id === selectedId) ?? null;
+
   return (
     <>
-      <h1 className="visuallyHidden">JIRAN CODING workspace</h1>
-      <section className="ticketWorkspace">
+      <h1 className="visuallyHidden">Tiket insiden</h1>
+      <section className="ticketWorkspace" aria-label="Ruang kerja tiket">
         <aside className="ticketSidebar">
           <div className="sidebarHeading">
             <div>
               <p className="eyebrow">ITSM</p>
-              <h2>Self healing</h2>
+              <h2>Insiden</h2>
             </div>
             <span className="incidentCount">{tickets.length}</span>
           </div>
@@ -107,7 +158,7 @@ export default function IncidentDesk() {
               {error}
             </div>
           ) : null}
-          <div className="ticketList" aria-live="polite">
+          <div className="ticketList" aria-label="Daftar insiden">
             {loading && tickets.length === 0 ? (
               <p className="emptyHint">Memuat insiden...</p>
             ) : tickets.length === 0 ? (
@@ -120,37 +171,135 @@ export default function IncidentDesk() {
               </div>
             ) : (
               tickets.map((ticket) => (
-                <details className="incidentItem" key={ticket.id}>
-                  <summary className="incidentSummary">
-                    <span className="incidentMeta">
-                      <span>{ticket.id}</span>
-                      <span className="incidentBadges">
-                        <span
-                          className={`severityBadge severity-${ticket.severity ?? "medium"}`}
-                          aria-label={`Severity ${SEVERITY_LABELS[ticket.severity ?? "medium"]}`}
-                        >
-                          {SEVERITY_LABELS[ticket.severity ?? "medium"]}
-                        </span>
-                        <span className={`statusBadge status-${ticket.status}`}>
-                          {STATUS_LABELS[ticket.status]}
-                        </span>
+                <button
+                  aria-pressed={ticket.id === selectedTicket?.id}
+                  className={`incidentItem${ticket.id === selectedTicket?.id ? " selected" : ""}`}
+                  key={ticket.id}
+                  onClick={() => setSelectedId(ticket.id)}
+                  type="button"
+                >
+                  <span className="incidentMeta">
+                    <span className="incidentId" title={ticket.id}>
+                      {ticket.id}
+                    </span>
+                    <span className="incidentBadges">
+                      <span
+                        className={`severityBadge severity-${ticket.severity ?? "medium"}`}
+                      >
+                        {SEVERITY_LABELS[ticket.severity ?? "medium"]}
+                      </span>
+                      <span className={`statusBadge status-${ticket.status}`}>
+                        {STATUS_LABELS[ticket.status]}
                       </span>
                     </span>
-                    <strong>{ticket.title}</strong>
-                    <span className="ticketItemDate">
-                      {ticket.source === "self-heal" ? "Self-healing" : "Sistem"}{" "}
-                      · {formatTime(ticket.updatedAt)}
+                  </span>
+                  <strong>{ticket.title}</strong>
+                  <span className="ticketItemDate">
+                    {ticket.source === "self-heal" ? "Self-healing" : "Sistem"}{" "}
+                    · {formatTime(ticket.updatedAt)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="agentQueueNote">
+            <span className="statusDot" />
+            <span>Daftar diperbarui otomatis</span>
+          </div>
+        </aside>
+
+        <section className="ticketDetailPanel" aria-label="Detail insiden">
+          {selectedTicket ? (
+            <>
+              <header className="ticketDetailHeader">
+                <div className="ticketDetailTitle">
+                  <p className="eyebrow">
+                    INSIDEN <span aria-hidden="true">/</span>{" "}
+                    {selectedTicket.id}
+                  </p>
+                  <h2>{selectedTicket.title}</h2>
+                  <p>
+                    {selectedTicket.source === "self-heal"
+                      ? "Terdeteksi otomatis oleh self-healing"
+                      : "Dilaporkan ke sistem"}
+                  </p>
+                </div>
+                <div className="ticketDetailBadges">
+                  <span
+                    className={`severityBadge severity-${selectedTicket.severity ?? "medium"}`}
+                  >
+                    Severity {SEVERITY_LABELS[selectedTicket.severity ?? "medium"]}
+                  </span>
+                  <span
+                    className={`statusBadge status-${selectedTicket.status}`}
+                  >
+                    {STATUS_LABELS[selectedTicket.status]}
+                  </span>
+                </div>
+              </header>
+
+              <div className="ticketDetailContent">
+                <section className="ticketFacts" aria-label="Informasi tiket">
+                  <div>
+                    <span>Dibuat</span>
+                    <strong>{formatTime(selectedTicket.createdAt)}</strong>
+                  </div>
+                  <div>
+                    <span>Pembaruan terakhir</span>
+                    <strong>{formatTime(selectedTicket.updatedAt)}</strong>
+                  </div>
+                  <div>
+                    <span>Sumber</span>
+                    <strong>
+                      {selectedTicket.source === "self-heal"
+                        ? "Self-healing"
+                        : "Sistem"}
+                    </strong>
+                  </div>
+                </section>
+
+                <section className="ticketDetailSection">
+                  <div className="detailSectionHeading">
+                    <div>
+                      <p className="eyebrow">KOMUNIKASI</p>
+                      <h3>Pembaruan insiden</h3>
+                    </div>
+                    <span className="transactionCount">
+                      {selectedTicket.messages.length}
                     </span>
-                  </summary>
-                  <div className="incidentDetails">
-                    {ticket.messages.at(-1) ? (
-                      <p className="incidentLastMessage">
-                        {ticket.messages.at(-1)?.content}
-                      </p>
-                    ) : null}
-                    {ticket.transactions.length > 0 ? (
-                      <ol className="incidentTimeline">
-                        {[...ticket.transactions].reverse().map((transaction) => (
+                  </div>
+                  {selectedTicket.messages.length > 0 ? (
+                    <ol className="ticketMessageList">
+                      {[...selectedTicket.messages].reverse().map((message) => (
+                        <li key={message.id}>
+                          <div className="ticketMessageHeading">
+                            <strong>{MESSAGE_ROLE_LABELS[message.role]}</strong>
+                            <time>{formatTime(message.createdAt)}</time>
+                          </div>
+                          <p>{message.content}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="detailEmpty">Belum ada pembaruan.</p>
+                  )}
+                </section>
+
+                <section className="ticketDetailSection">
+                  <div className="detailSectionHeading">
+                    <div>
+                      <p className="eyebrow">AUDIT TRAIL</p>
+                      <h3>Riwayat aktivitas</h3>
+                    </div>
+                    <span className="transactionCount">
+                      {selectedTicket.transactions.length}
+                    </span>
+                  </div>
+                  {selectedTicket.transactions.length > 0 ? (
+                    <ol className="incidentTimeline">
+                      {[...selectedTicket.transactions]
+                        .reverse()
+                        .map((transaction) => (
                           <li key={transaction.id}>
                             <span className="timelineDot" />
                             <div>
@@ -160,20 +309,52 @@ export default function IncidentDesk() {
                             </div>
                           </li>
                         ))}
-                      </ol>
-                    ) : null}
-                  </div>
-                </details>
-              ))
-            )}
-          </div>
-          <div className="agentQueueNote">
-            <span className="statusDot" />
-            <span>Satu agent · antrean serial</span>
-          </div>
-        </aside>
+                    </ol>
+                  ) : (
+                    <p className="detailEmpty">Belum ada aktivitas tercatat.</p>
+                  )}
+                </section>
 
-        <AgentPlayground />
+                {selectedTicket.jobs.length > 0 ? (
+                  <section className="ticketDetailSection">
+                    <div className="detailSectionHeading">
+                      <div>
+                        <p className="eyebrow">AUTOMATION</p>
+                        <h3>Job terkait</h3>
+                      </div>
+                      <span className="transactionCount">
+                        {selectedTicket.jobs.length}
+                      </span>
+                    </div>
+                    <ul className="ticketJobs">
+                      {selectedTicket.jobs.map((job) => (
+                        <li key={job.id}>
+                          <div>
+                            <strong>{job.id}</strong>
+                            <span>{job.progress}</span>
+                          </div>
+                          <span className="statusBadge">{job.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="ticketDetailEmpty">
+              <span className="emptyIncidentMark" aria-hidden="true">
+                —
+              </span>
+              <h2>{loading ? "Memuat insiden" : "Pilih insiden"}</h2>
+              <p>
+                {loading
+                  ? "Daftar tiket sedang diperbarui."
+                  : "Pilih tiket di sebelah kiri untuk melihat detail dan riwayatnya."}
+              </p>
+            </div>
+          )}
+        </section>
       </section>
     </>
   );

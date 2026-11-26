@@ -1049,62 +1049,65 @@ th {
 }
 
 .incidentItem {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-}
-
-.incidentItem[open] {
-  border-color: rgba(82, 211, 176, 0.18);
-  background: rgba(82, 211, 176, 0.035);
-}
-
-.incidentSummary {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 30px 12px 12px;
+  color: inherit;
   cursor: pointer;
-  list-style: none;
+  font: inherit;
+  text-align: left;
 }
 
-.incidentSummary::-webkit-details-marker {
-  display: none;
+.incidentItem:hover {
+  background: rgba(255, 255, 255, 0.035);
 }
 
-.incidentSummary::after {
-  position: absolute;
-  top: 20px;
-  right: 13px;
-  width: 7px;
-  height: 7px;
-  transform: rotate(45deg);
-  border-right: 1px solid var(--muted);
-  border-bottom: 1px solid var(--muted);
-  content: "";
-  transition: transform 140ms ease;
+.incidentItem:focus-visible {
+  outline: 2px solid rgba(82, 211, 176, 0.7);
+  outline-offset: 1px;
 }
 
-.incidentItem[open] .incidentSummary::after {
-  transform: rotate(225deg);
+.incidentItem.selected {
+  border-color: rgba(82, 211, 176, 0.18);
+  background: rgba(82, 211, 176, 0.065);
 }
 
 .incidentMeta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 6px;
   color: var(--muted);
   font-size: 9px;
 }
 
+.incidentId {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .incidentBadges {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.incidentBadges .severityBadge,
+.incidentBadges .statusBadge {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  font-size: 8px;
 }
 
 .severityBadge {
@@ -1136,23 +1139,12 @@ th {
   color: #ff9292;
 }
 
-.incidentSummary > strong {
+.incidentItem > strong {
+  display: block;
+  width: 100%;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.incidentDetails {
-  padding: 0 12px 12px;
-  border-top: 1px solid rgba(37, 54, 72, 0.7);
-}
-
-.incidentLastMessage {
-  margin: 10px 0;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -1198,6 +1190,219 @@ th {
   font-size: 9px;
 }
 
+.ticketDetailPanel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ticketDetailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 26px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(17, 27, 38, 0.44);
+}
+
+.ticketDetailTitle {
+  min-width: 0;
+}
+
+.ticketDetailTitle .eyebrow {
+  overflow-wrap: anywhere;
+}
+
+.ticketDetailTitle h2 {
+  margin: 9px 0 6px;
+  font-size: clamp(18px, 2vw, 23px);
+  letter-spacing: -0.025em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ticketDetailTitle > p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ticketDetailBadges {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.ticketDetailContent {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 18px 22px 24px;
+}
+
+.ticketFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ticketFacts > div {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(37, 54, 72, 0.84);
+  border-radius: 10px;
+  background: rgba(11, 18, 26, 0.48);
+}
+
+.ticketFacts span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.ticketFacts strong {
+  font-size: 11px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ticketDetailSection {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid rgba(37, 54, 72, 0.84);
+  border-radius: 11px;
+  background: rgba(11, 18, 26, 0.42);
+}
+
+.detailSectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.detailSectionHeading h3 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.ticketMessageList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticketMessageList li {
+  min-width: 0;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: rgba(145, 164, 184, 0.045);
+}
+
+.ticketMessageHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ticketMessageHeading strong {
+  font-size: 10px;
+}
+
+.ticketMessageHeading time {
+  color: #72879b;
+  font-size: 9px;
+}
+
+.ticketMessageList li > p {
+  margin: 7px 0 0;
+  color: #c3d0dd;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.detailEmpty {
+  margin: 8px 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ticketJobs {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ticketJobs li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(37, 54, 72, 0.68);
+  border-radius: 8px;
+  background: rgba(145, 164, 184, 0.035);
+}
+
+.ticketJobs li > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.ticketJobs strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.ticketJobs li > div > span {
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.ticketDetailEmpty {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  padding: 32px;
+  text-align: center;
+}
+
+.ticketDetailEmpty h2 {
+  margin: 14px 0 6px;
+  font-size: 15px;
+}
+
+.ticketDetailEmpty p {
+  max-width: 340px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .emptyIncident {
   display: grid;
   justify-items: start;
@@ -1228,6 +1433,162 @@ th {
 
 .incidentError {
   margin: 0 10px 10px;
+}
+
+.agentWorkspace {
+  display: grid;
+  width: 100%;
+  height: min(720px, calc(100vh - 190px));
+  min-height: 560px;
+  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(17, 27, 38, 0.88);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.2);
+}
+
+.agentHistorySidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: rgba(14, 23, 33, 0.8);
+}
+
+.agentHistoryHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 18px 14px;
+}
+
+.agentHistoryHeading h2 {
+  margin: 5px 0 0;
+  font-size: 16px;
+}
+
+.agentNewJobIconButton {
+  display: grid;
+  width: 32px;
+  min-height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+}
+
+.agentHistoryList {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+  overflow-y: auto;
+  padding: 0 10px 14px;
+}
+
+.agentHistoryItem {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.agentHistoryItem:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.agentHistoryItem:focus-visible {
+  outline: 2px solid rgba(82, 211, 176, 0.7);
+  outline-offset: 1px;
+}
+
+.agentHistoryItem.selected {
+  border-color: rgba(82, 211, 176, 0.24);
+  background: rgba(82, 211, 176, 0.065);
+}
+
+.agentHistoryItemTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #8195a8;
+  font-size: 9px;
+}
+
+.agentHistoryItem > strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #d7e2ec;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.agentJobStatus {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.agentJobStatus-queued,
+.agentJobStatus-running,
+.agentJobStatus-cancelling {
+  color: var(--amber);
+}
+
+.agentJobStatus-completed {
+  color: var(--accent);
+}
+
+.agentJobStatus-failed {
+  color: var(--red);
+}
+
+.agentHistoryEmpty {
+  margin-top: 6px;
+  padding: 10px;
+}
+
+.agentHistoryEmpty strong {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.agentHistoryFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 17px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.agentHistoryFooter .statusDot {
+  flex: 0 0 7px;
+}
+
+.agentIdleDot {
+  background: #708397;
+  box-shadow: none;
 }
 
 .agentPlayground {
@@ -1304,6 +1665,129 @@ th {
 .playgroundMessages .chatMessage p {
   margin: 0;
   font-size: 12px;
+}
+
+.playgroundMessages .markdownContent {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.playgroundMessages .markdownContent > :first-child {
+  margin-top: 0;
+}
+
+.playgroundMessages .markdownContent > :last-child {
+  margin-bottom: 0;
+}
+
+.playgroundMessages .markdownContent p,
+.playgroundMessages .markdownContent ul,
+.playgroundMessages .markdownContent ol,
+.playgroundMessages .markdownContent blockquote,
+.playgroundMessages .markdownContent pre,
+.playgroundMessages .markdownContent table,
+.playgroundMessages .markdownContent hr {
+  margin: 0 0 10px;
+}
+
+.playgroundMessages .markdownContent h1,
+.playgroundMessages .markdownContent h2,
+.playgroundMessages .markdownContent h3,
+.playgroundMessages .markdownContent h4,
+.playgroundMessages .markdownContent h5,
+.playgroundMessages .markdownContent h6 {
+  margin: 16px 0 7px;
+  line-height: 1.35;
+}
+
+.playgroundMessages .markdownContent h1 {
+  font-size: 18px;
+}
+
+.playgroundMessages .markdownContent h2 {
+  font-size: 16px;
+}
+
+.playgroundMessages .markdownContent h3 {
+  font-size: 14px;
+}
+
+.playgroundMessages .markdownContent h4,
+.playgroundMessages .markdownContent h5,
+.playgroundMessages .markdownContent h6 {
+  font-size: 12px;
+}
+
+.playgroundMessages .markdownContent ul,
+.playgroundMessages .markdownContent ol {
+  padding-left: 21px;
+}
+
+.playgroundMessages .markdownContent li + li {
+  margin-top: 4px;
+}
+
+.playgroundMessages .markdownContent a {
+  color: var(--blue);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.playgroundMessages .markdownContent blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+}
+
+.playgroundMessages .markdownContent code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(145, 164, 184, 0.12);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.playgroundMessages .markdownContent pre {
+  overflow-x: auto;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(11, 17, 24, 0.72);
+}
+
+.playgroundMessages .markdownContent pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.playgroundMessages .markdownContent table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.playgroundMessages .markdownContent th,
+.playgroundMessages .markdownContent td {
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.playgroundMessages .markdownContent th {
+  background: rgba(145, 164, 184, 0.08);
+}
+
+.playgroundMessages .markdownContent hr {
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 
 .assistantFiles {
@@ -1449,6 +1933,20 @@ th {
   .ticketWorkspace {
     grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   }
+
+  .agentWorkspace {
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  }
+
+  .ticketDetailHeader {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .ticketDetailContent {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
 }
 
 @media (max-width: 680px) {
@@ -1460,6 +1958,48 @@ th {
 
   .ticketSidebar {
     max-height: 330px;
+  }
+
+  .ticketDetailPanel {
+    min-height: 560px;
+  }
+
+  .ticketDetailHeader {
+    flex-direction: column;
+    gap: 13px;
+    padding: 18px 16px;
+  }
+
+  .ticketDetailBadges {
+    justify-content: flex-start;
+  }
+
+  .ticketDetailContent {
+    padding: 14px 12px 20px;
+  }
+
+  .ticketFacts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agentWorkspace {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agentHistorySidebar {
+    max-height: 330px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .agentHistoryList {
+    max-height: 185px;
+  }
+
+  .agentHistoryFooter {
+    display: none;
   }
 
   .agentPlayground {

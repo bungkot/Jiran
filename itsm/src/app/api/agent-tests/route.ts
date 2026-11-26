@@ -1,9 +1,25 @@
-import { submitAgentGoal } from "@/lib/agent";
+import { listAgentJobs, submitAgentGoal } from "@/lib/agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_MESSAGE_LENGTH = 300;
+
+export async function GET() {
+  try {
+    const jobs = await listAgentJobs();
+    return Response.json(
+      { jobs },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    console.error("ITSM gagal memuat riwayat coding agent", error);
+    return Response.json(
+      { error: "Riwayat coding agent belum dapat dimuat." },
+      { status: 502 },
+    );
+  }
+}
 
 export async function POST(request: Request) {
   let payload: unknown;

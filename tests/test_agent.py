@@ -97,6 +97,7 @@ def test_agent_logs_full_model_and_tool_exchange_with_private_permissions(settin
         project,
         settings,
         llm=model,
+        response_language="English",
     )
 
     assert result.ok and not result.verified
@@ -114,6 +115,16 @@ def test_agent_logs_full_model_and_tool_exchange_with_private_permissions(settin
         and "Create a minimal Go entry point." in json.dumps(event)
         for event in events
     )
+    request_event = next(event for event in events if event["event"] == "model.request")
+    system_prompt = next(
+        message["content"]
+        for message in request_event["messages"]
+        if message["type"] == "system"
+    )
+    normalized_prompt = " ".join(system_prompt.split())
+    assert "If the request is in Indonesian, respond in Indonesian" in normalized_prompt
+    assert "Use English when the user's language is unclear or mixed" in normalized_prompt
+    assert "MANDATORY RESPONSE LANGUAGE FOR THIS RUN: English." in normalized_prompt
     assert any(
         event["event"] == "model.response" and "package main" in json.dumps(event)
         for event in events
@@ -151,6 +162,14 @@ def test_agent_requests_summary_after_one_empty_final_response(settings):
         for line in (settings.logs_dir / f"run-{result.session_id}.jsonl").read_text().splitlines()
     ]
     assert any(event["event"] == "model.empty_response" for event in events)
+    retry_request = next(
+        event
+        for event in events
+        if event["event"] == "model.request" and event["step"] == 4
+    )
+    retry_prompt = retry_request["messages"][-1]["content"]
+    assert "language of the user's original request" in retry_prompt
+    assert "Do not call tools again" in retry_prompt
 
 
 def test_agent_does_not_retry_repeated_empty_final_responses(settings):

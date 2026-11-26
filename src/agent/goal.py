@@ -31,6 +31,7 @@ from .agent import (
     _content_to_text,
     _decode_json_payloads,
     _messages_for_log,
+    _response_language,
     _RunLog,
     run_agent,
 )
@@ -59,7 +60,6 @@ _IGNORED_TREE_DIRS = frozenset(
     }
 )
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
-
 _JUDGE_PROMPT = """You evaluate whether a coding goal has actually been achieved.
 
 Decide based on evidence, not on promises. The goal is achieved only when the
@@ -368,8 +368,17 @@ def _todo_prompt(
     completed: tuple[str, ...],
     feedback: str,
 ) -> str:
+    response_language = _response_language(goal)
+    language_instruction = (
+        f"FINAL RESPONSE LANGUAGE: {response_language}. "
+        "Write the final user-facing summary in this language, regardless of the "
+        "language used by these internal instructions.\n"
+    )
     files = f"\nFILE YANG DISARANKAN: {', '.join(todo.files)}\n" if todo.files else "\n"
-    head = f"TUJUAN PROYEK: {goal}\n\nTUGAS {index}/{total}: {todo.task}\n{files}"
+    head = (
+        f"{language_instruction}TUJUAN PROYEK: {goal}\n\n"
+        f"TUGAS {index}/{total}: {todo.task}\n{files}"
+    )
     if not completed:
         return (
             head + "Kerjakan HANYA tugas ini. Gunakan tool untuk memeriksa proyek, terapkan "
@@ -603,9 +612,15 @@ def _worker_prompt(
     history: tuple[GoalIteration, ...],
     feedback: str,
 ) -> str:
+    response_language = _response_language(goal)
+    language_instruction = (
+        f"FINAL RESPONSE LANGUAGE: {response_language}. "
+        "Write the final user-facing summary in this language, regardless of the "
+        "language used by these internal instructions.\n"
+    )
     if index == 1:
         return (
-            f"TUJUAN PROYEK: {goal}\n\n"
+            f"{language_instruction}TUJUAN PROYEK: {goal}\n\n"
             "Ini adalah putaran pertama. Folder proyek masih kosong: buat proyek ini DARI AWAL. "
             "Buat hanya file yang benar-benar dibutuhkan untuk mencapai tujuan; jangan membuat "
             "scaffolding, bahasa, atau file tambahan yang tidak diminta. Jika tujuan sudah "
@@ -792,6 +807,7 @@ def run_goal_loop(
                 on_event=on_event,
                 on_output=on_output,
                 should_cancel=should_cancel,
+                response_language=_response_language(target_goal),
             )
         except AgentCancelled:
             raise

@@ -12,6 +12,8 @@ from agent.goal import (
     _evaluate,
     _heuristic_plan,
     _project_fingerprint,
+    _todo_prompt,
+    _worker_prompt,
     plan_goal,
     resolve_project_dir,
     run_goal_loop,
@@ -84,6 +86,22 @@ def test_project_fingerprint_detects_same_size_content_change(settings):
 
 def test_goal_default_iteration_limit_is_five(settings):
     assert settings.max_goal_iterations == 5
+
+
+@pytest.mark.parametrize(
+    ("goal", "expected_language"),
+    [
+        ("Create a Python package with unit tests.", "English"),
+        ("Buat paket Python dengan tes unit.", "Indonesian"),
+    ],
+)
+def test_goal_prompts_set_response_language_from_original_request(goal, expected_language):
+    task = TodoItem(task="Implement the requested change.")
+    todo_prompt = _todo_prompt(goal, task, 1, 1, (), "")
+    worker_prompt = _worker_prompt(goal, 1, (), "")
+
+    assert f"FINAL RESPONSE LANGUAGE: {expected_language}." in todo_prompt
+    assert f"FINAL RESPONSE LANGUAGE: {expected_language}." in worker_prompt
 
 
 def test_goal_loop_creates_project_and_stops_when_goal_is_achieved(settings):

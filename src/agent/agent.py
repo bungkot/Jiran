@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -30,6 +30,28 @@ class AgentError(RuntimeError):
 
 class AgentCancelled(AgentError):
     """A coding-agent run was cancelled by the caller."""
+
+
+ResponseLanguage = Literal["English", "Indonesian"]
+_INDONESIAN_REQUEST_MARKERS = {
+    "bagaimana",
+    "bahasa",
+    "buat",
+    "dengan",
+    "untuk",
+    "hasil",
+    "jangan",
+    "jalankan",
+    "mohon",
+    "perbaiki",
+    "ringkas",
+    "saya",
+    "silakan",
+    "tolong",
+    "ubah",
+    "gunakan",
+    "yang",
+}
 
 
 @dataclass(frozen=True)
@@ -74,6 +96,12 @@ ask for approval for routine implementation choices. Use this loop:
 6. Summarize what changed, which checks actually ran and their results, and any limitations.
 
 Rules:
+- Write the final user-facing response in the language used by the user's request. If the
+  request is in Indonesian, respond in Indonesian; if it is in English, respond in English.
+  Ignore the language used by system prompts, progress messages, or tools when choosing
+  your response language. Use English when the user's language is unclear or mixed. This
+  applies only to your response; follow the user's requirements for project content.
+  In a goal-based task, follow its explicit FINAL RESPONSE LANGUAGE instruction exactly.
 - Follow the project's conventions and use only the provided tools. File paths are relative
   to the project root.
 - Create only files needed to satisfy the request and acceptance checks. Do not add
@@ -107,6 +135,11 @@ def _content_to_text(content: Any) -> str:
                 parts.append(str(item.get("text", "")))
         return "".join(parts)
     return str(content)
+
+
+def _response_language(request: str) -> ResponseLanguage:
+    words = set(re.findall(r"[a-z]+", request.casefold()))
+    return "Indonesian" if words.intersection(_INDONESIAN_REQUEST_MARKERS) else "English"
 
 
 def _messages_for_log(messages: list[Any]) -> list[dict[str, Any]]:
@@ -357,6 +390,7 @@ def run_agent(
     on_event: Callable[[dict[str, Any]], None] | None = None,
     on_output: Callable[[str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    response_language: ResponseLanguage | None = None,
 ) -> AgentResult:
     request = user_request.strip()
     if not request:
@@ -382,8 +416,15 @@ def run_agent(
     except (TypeError, ValueError) as exc:
         raise AgentError(f"Model tidak mendukung tool calling: {exc}") from exc
 
+    response_language = response_language or _response_language(request)
     messages = [
-        SystemMessage(content=_SYSTEM_PROMPT),
+        SystemMessage(
+            content=(
+                f"{_SYSTEM_PROMPT}\n\n"
+                f"MANDATORY RESPONSE LANGUAGE FOR THIS RUN: {response_language}. "
+                f"Write the final user-facing response in {response_language}."
+            )
+        ),
         HumanMessage(content=request),
     ]
     tool_count = 0
@@ -592,9 +633,10 @@ def run_agent(
                     messages.append(
                         HumanMessage(
                             content=(
-                                "Semua pemeriksaan tool telah selesai, tetapi jawaban "
-                                "terakhirmu kosong. Berikan ringkasan singkat yang nyata "
-                                "tentang perubahan dan pemeriksaan; jangan mengulang tool."
+                                "The tool checks are complete, but your last response was "
+                                "empty. Write a concise, factual summary of the changes and "
+                                "checks in the language of the user's original request. "
+                                "Do not call tools again."
                             )
                         )
                     )

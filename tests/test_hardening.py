@@ -267,9 +267,9 @@ def test_settings_url_dan_iteration_limit(settings):
         replace(settings, max_goal_iterations=100)
 
 
-def test_service_url_dapat_diarahkan_ke_load_balancer(monkeypatch):
-    monkeypatch.setenv("AGENT_SERVICE_URL", "http://agent-lb:8765/")
-    assert Settings.load().service_url == "http://agent-lb:8765"
+def test_service_url_dapat_diarahkan_ke_agent_tunggal(monkeypatch):
+    monkeypatch.setenv("AGENT_SERVICE_URL", "http://agent-1:8765/")
+    assert Settings.load().service_url == "http://agent-1:8765"
 
 
 def test_settings_gambar_tidak_boleh_awalan_dash(settings):

@@ -10,9 +10,7 @@ Nama paket Python-nya `coding-agent`; titik masuk CLI `coding-agent`.
 CLI / klien HTTP
       │
       ▼
-Load balancer (round-robin)
-      ├── Agent service 1 (antrean + satu worker)
-      └── Agent service 2 (antrean + satu worker)
+Agent service tunggal (antrean + satu worker)
       │
       ▼
 Goal loop  ── planner heuristik ──▶ todo per file
@@ -67,20 +65,14 @@ uv run coding-agent job <id>
 container dan endpoint `/goals` dapat memicu agent menulis file serta menjalankan
 perintah. Token minimal 32 karakter.
 
-Compose menyediakan tiga worker agent di belakang Nginx. Autoscaler
-mempertahankan satu worker saat idle atau hanya ada satu job aktif, dan
-menyalakan worker tambahan ketika jumlah job berjalan/menunggu memerlukan
-kapasitas konkuren. Worker idle dihentikan segera setelah kapasitas tambahannya
-tidak dibutuhkan; worker yang baru menyelesaikan job dipertahankan 60 detik
-agar klien sempat mengambil hasil akhir. Request submit dibagi bergiliran; ID job memiliki prefix
-worker agar polling berikutnya tetap mencapai container pemilik antrean. CLI
-menampilkan ID container pada submit/status.
-CLI di host memakai `AGENT_SERVICE_URL=http://localhost:8765` (port Nginx yang
-dipublish); CLI yang dijalankan dari container memakai `http://agent-lb:8765`.
-Dengan begitu CLI tidak perlu memilih worker atau mengetahui alamat container.
-Semua worker berbagi workspace dan log, tetapi job/antrean berada di memori
-masing-masing container dan hilang saat container dimulai ulang. Job yang
-menargetkan proyek yang sama diserialisasi dengan file lock bersama.
+Compose menjalankan satu coding agent langsung pada port `8765` di loopback
+host; load balancer dan autoscaler tidak aktif. Semua job diproses oleh satu
+worker dan diserialisasi dalam antrean yang sama. CLI di host memakai
+`AGENT_SERVICE_URL=http://localhost:8765`; CLI dari container memakai
+`http://agent-1:8765`. Job/antrean berada di memori dan hilang saat container
+dimulai ulang. Job yang menargetkan proyek yang sama diserialisasi dengan file
+lock bersama. Definisi worker tambahan, Nginx, dan autoscaler tetap tersedia
+di profile `legacy-scaling`, tetapi tidak dijalankan oleh Compose default.
 
 API Ollama dipublish hanya ke loopback host pada port `OLLAMA_PORT` (default
 `11434`) agar CLI dan benchmark lokal dapat mengaksesnya tanpa mengeksposnya ke
@@ -103,9 +95,9 @@ Prometheus tersedia di `http://localhost:9090`. Kedua port hanya bind ke
 loopback host. Dashboard dapat dilihat tanpa login, tetapi aksesnya read-only.
 Prometheus menyimpan data selama 7 hari.
 
-Prometheus mengumpulkan metrik antrean, job selesai, dan durasi dari ketiga agent,
+Prometheus mengumpulkan metrik antrean, job selesai, dan durasi dari agent tunggal,
 serta metrik CPU, memori, dan filesystem host dari Node Exporter. Endpoint
-`/metrics` hanya tersedia di jaringan internal Compose dan diblokir oleh Nginx.
+`/metrics` hanya tersedia di jaringan internal Compose.
 Node Exporter memerlukan mount read-only `/`, `/proc`, dan `/sys` untuk membaca
 metrik host. Batas memori container monitoring adalah 896 MiB total; hentikan
 saat tidak diperlukan dengan
@@ -177,7 +169,7 @@ Lihat `.env.example` untuk daftar lengkap. Yang sering diubah:
 | `AGENT_SANDBOX_NETWORK` | `none` | `bridge` hanya bila memang perlu |
 | `AGENT_SANDBOX_MEMORY_MB` / `AGENT_SANDBOX_CPUS` | `256` / `1` (Compose) | Batas per sandbox; naikkan hanya jika RAM tersedia |
 | `AGENT_API_TOKEN` | kosong | Wajib bila bind non-loopback |
-| `AGENT_SERVICE_PORT` | `8765` | Port load balancer di host |
+| `AGENT_SERVICE_PORT` | `8765` | Port agent di host, bind ke `127.0.0.1` |
 | `AGENT_SANDBOX_MIN_FREE_DISK_MB` | `256` | Tolak tulis bila disk hampir penuh |
 | `AGENT_SANDBOX_DISK_QUOTA_MB` | `0` | Kuota writable layer container |
 

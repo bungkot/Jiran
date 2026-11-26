@@ -87,57 +87,6 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 0
-      },
-      "id": 2,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "100 * avg_over_time(up{job=\"jiran-agent\", instance=\"agent-2:8765\"}[$__range])",
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Uptime — Agent-2",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": 90
-              },
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
         "y": 8
       },
@@ -208,57 +157,6 @@
         }
       ],
       "title": "Job success ratio — Agent-1",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "decimals": 0,
-          "max": 100,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": 90
-              },
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 16
-      },
-      "id": 5,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "horizontal",
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "expr": "100 * sum(jiran_agent_jobs_finished_total{status=\"completed\", agent_id=\"agent-2\"}) / sum(jiran_agent_jobs_finished_total{agent_id=\"agent-2\"})",
-          "instant": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Job success ratio — Agent-2",
       "type": "stat"
     },
     {

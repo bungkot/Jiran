@@ -7,9 +7,7 @@ Pemakaian (di container Compose):
 
 Service yang dipantau (harus HTTP 200):
   - ollama   : GET /api/version  (Ollama REST)
-  - agent-1  : GET /health       (service worker 1)
-  - agent-2  : GET /health       (service worker 2)
-  - agent-3  : GET /health       (service worker 3)
+  - agent-1  : GET /health       (coding agent)
 
 Prioritas (menurut pemilik stack):
   prio-1 = jiran-agent: diagnosis LLM → restart
@@ -49,16 +47,14 @@ from typing import Any
 # Prioritas self-healing menurut pemilik stack:
 #   prio-1 = jiran-agent — diagnosis LLM → restart
 #   prio-2 = ollama — fallback restart (diagnosis LLM tak bisa saat LLM itu sendiri down)
-AGENT_SERVICES = frozenset({"agent-1", "agent-2", "agent-3"})
+AGENT_SERVICES = frozenset({"agent-1"})
 OLLAMA_SERVICE = "ollama"
-DEFAULT_WATCH = tuple(os.environ.get("SELFHEAL_WATCH", "agent-1,agent-2,agent-3,ollama").split(","))
+DEFAULT_WATCH = tuple(os.environ.get("SELFHEAL_WATCH", "agent-1,ollama").split(","))
 COMPOSE_PROJECT = os.environ.get("SELFHEAL_COMPOSE_PROJECT", "jiran")
 SOCKET = os.environ.get("SELFHEAL_DOCKER_SOCKET", "/var/run/docker.sock")
 TARGET_URLS = {
     "ollama": "http://ollama:11434/api/version",
     "agent-1": "http://agent-1:8765/health",
-    "agent-2": "http://agent-2:8765/health",
-    "agent-3": "http://agent-3:8765/health",
 }
 
 # Keadaan sumber daya host (via Prometheus/node-exporter) — Prio-3.
@@ -136,17 +132,9 @@ def check(url: str, timeout_s: float = 3.0) -> bool:
 def poll_state(
     watch: tuple[str, ...],
     timeout_s: float = 3.0,
-    *,
-    sock_path: str = SOCKET,
-    project: str = COMPOSE_PROJECT,
 ) -> list[dict[str, str]]:
     state = []
     for name in watch:
-        if name in {"agent-2", "agent-3"}:
-            is_running = container_is_running(sock_path, name, project)
-            if is_running is False:
-                state.append({"name": name, "status": "stopped"})
-                continue
         url = TARGET_URLS.get(name, f"http://{name}:1/health")
         state.append({"name": name, "status": "up" if check(url, timeout_s) else "down"})
     return state
@@ -171,24 +159,6 @@ def find_container_name(sock_path: str, service: str, project: str = COMPOSE_PRO
         return None
     names = [str(item["Names"][0])[1:] for item in data if item.get("Names")]
     return names[0] if names else None
-
-
-def container_is_running(sock_path: str, service: str, project: str) -> bool | None:
-    """Return state Docker untuk membedakan worker idle yang sengaja dihentikan."""
-    container = find_container_name(sock_path, service, project)
-    if container is None:
-        return False
-    try:
-        conn = UnixHTTPConnection(sock_path)
-        path = f"/containers/{urllib.parse.quote(container, safe='')}/json"
-        conn.request("GET", path)
-        response = conn.getresponse()
-        data = json.loads(response.read())
-    except (OSError, ValueError):
-        return None
-    state = data.get("State")
-    running = state.get("Running") if isinstance(state, dict) else None
-    return running if isinstance(running, bool) else None
 
 
 def docker_restart(sock_path: str, container: str, timeout_s: int = 10) -> bool:
@@ -318,7 +288,7 @@ def run_once(
     project=COMPOSE_PROJECT,
     dry_run=False,
 ) -> None:
-    state = poll_state(watch, sock_path=sock_path, project=project)
+    state = poll_state(watch)
     by_name = {item["name"]: item for item in state}
     resources = poll_resources(prometheus_url)
     print(
@@ -327,12 +297,9 @@ def run_once(
     )
     down = [item for item in state if item["status"] == "down"]
     if not down:
-        stopped = [item["name"] for item in state if item["status"] == "stopped"]
         print(
             f"[{time.strftime('%H:%M:%S')}] tidak ada service gagal: "
-            f"jiran-agent={[n for n in watch if n in AGENT_SERVICES]}, "
-            f"ollama={[n for n in watch if n == OLLAMA_SERVICE]}, "
-            f"worker autoscaled idle={stopped or '-'}",
+            f"{[item['name'] for item in state]}",
             flush=True,
         )
         return

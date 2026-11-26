@@ -78,14 +78,6 @@ export default async function Page() {
           title="Agent 1 (1h)"
           value={fmtPct(availability.get("agent-1"))}
         />
-        <MetricCard
-          title="Agent 2 (1h)"
-          value={fmtPct(availability.get("agent-2"))}
-        />
-        <MetricCard
-          title="Agent 3 (1h)"
-          value={fmtPct(availability.get("agent-3"))}
-        />
       </div>
     </>
   );

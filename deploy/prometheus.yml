@@ -29,12 +29,6 @@ scrape_configs:
       - targets: ["agent-1:8765"]
         labels:
           agent_id: agent-1
-      - targets: ["agent-2:8765"]
-        labels:
-          agent_id: agent-2
-      - targets: ["agent-3:8765"]
-        labels:
-          agent_id: agent-3
 
   - job_name: node-exporter
     static_configs:

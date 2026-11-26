@@ -79,7 +79,7 @@ services:
     mem_limit: 128m
     restart: unless-stopped
 
-  # Watchdog self-healing: monitor layanan (ollama dan seluruh agent),
+  # Watchdog self-healing: monitor layanan (ollama dan agent tunggal),
   # diagnose dengan LLM via Ollama, lalu restart container yang DOWN
   # (lihat scripts/selfheal.py; action lain hanya dicatat).
   selfheal:
@@ -94,7 +94,7 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
       SELFHEAL_INTERVAL: "60"
-      SELFHEAL_WATCH: "agent-1,agent-2,agent-3,ollama"
+      SELFHEAL_WATCH: "agent-1,ollama"
       SELFHEAL_PROMETHEUS_URL: "http://prometheus:9090"
       SELFHEAL_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-jiran}
     depends_on:
@@ -112,6 +112,8 @@ services:
     command: serve
     expose:
       - "8765"
+    ports:
+      - "127.0.0.1:${AGENT_SERVICE_PORT:-8765}:8765"
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
@@ -142,7 +144,7 @@ services:
       AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
       AGENT_SERVICE_HOST: 0.0.0.0
       AGENT_SERVICE_PORT: 8765
-      AGENT_SERVICE_URL: http://agent-lb:8765
+      AGENT_SERVICE_URL: http://agent-1:8765
       AGENT_INSTANCE_ID: agent-1
       AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
     volumes:
@@ -170,6 +172,7 @@ services:
     restart: unless-stopped
 
   agent-2:
+    profiles: ["legacy-scaling"]
     build: .
     image: coding-agent:local
     depends_on:
@@ -231,6 +234,7 @@ services:
 
   # Worker ketiga (untuk autoscaler, lihat service autoscale bawah).
   agent-3:
+    profiles: ["legacy-scaling"]
     build: .
     image: coding-agent:local
     depends_on:
@@ -292,6 +296,7 @@ services:
 
   # Autoscaler menjaga 1 worker dasar dan menambah kapasitas hanya untuk job konkuren.
   autoscale:
+    profiles: ["legacy-scaling"]
     image: python:3.13-slim
     working_dir: /app
     command: ["python", "autoscale.py"]
@@ -312,6 +317,7 @@ services:
     restart: unless-stopped
 
   agent-lb:
+    profiles: ["legacy-scaling"]
     image: nginx:alpine
     depends_on:
       agent-1:
@@ -349,8 +355,6 @@ services:
     profiles: ["monitoring"]
     depends_on:
       agent-1:
-        condition: service_healthy
-      agent-2:
         condition: service_healthy
       node-exporter:
         condition: service_started

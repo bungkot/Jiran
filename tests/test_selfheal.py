@@ -4,19 +4,20 @@ import urllib.parse
 from scripts import selfheal
 
 
-def test_selfheal_includes_third_agent():
-    assert "agent-3" in selfheal.AGENT_SERVICES
-    assert "agent-3" in selfheal.DEFAULT_WATCH
-    assert selfheal.TARGET_URLS["agent-3"] == "http://agent-3:8765/health"
+def test_selfheal_watches_single_agent_and_ollama():
+    assert selfheal.AGENT_SERVICES == {"agent-1"}
+    assert selfheal.DEFAULT_WATCH == ("agent-1", "ollama")
+    assert set(selfheal.TARGET_URLS) == {"agent-1", "ollama"}
 
 
-def test_stopped_autoscaled_agent_is_not_reported_as_failed(monkeypatch):
-    monkeypatch.setattr(selfheal, "container_is_running", lambda *_args: False)
-    monkeypatch.setattr(selfheal, "check", lambda *_args: False)
+def test_poll_state_checks_single_agent(monkeypatch):
+    checked = []
+    monkeypatch.setattr(selfheal, "check", lambda url, *_args: checked.append(url) or True)
 
-    state = selfheal.poll_state(("agent-3",), sock_path="/unused", project="jiran")
+    state = selfheal.poll_state(("agent-1",))
 
-    assert state == [{"name": "agent-3", "status": "stopped"}]
+    assert state == [{"name": "agent-1", "status": "up"}]
+    assert checked == ["http://agent-1:8765/health"]
 
 
 def test_container_lookup_scopes_to_compose_project(monkeypatch):

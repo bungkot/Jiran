@@ -1,13 +1,16 @@
+import io
 import json
 import socket
 import threading
 import time
+import zipfile
 from dataclasses import replace
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from agent.agent import AgentCancelled
 from agent.service import AgentService, QueueFullError, create_server, parse_goal_options
 
 _TOKEN = "token-rahasia-32-karakter-lebih-panjang"  # noqa: S105 - token dummy untuk test
@@ -24,7 +27,7 @@ def wait_for(service: AgentService, job_id: str, timeout: float = 5.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         job = service.get(job_id)
-        if job and job.status in {"completed", "failed"}:
+        if job and job.status in {"completed", "failed", "cancelled"}:
             return job
         time.sleep(0.01)
     raise AssertionError("job tidak selesai tepat waktu")
@@ -61,6 +64,33 @@ def test_service_processes_goals_serially(settings):
         assert wait_for(service, second.id).status == "completed"
         assert maximum == 1
         assert service.stats()["running"] == 0
+    finally:
+        service.stop()
+
+
+def test_service_includes_visible_project_files_in_job(settings):
+    project = settings.workspace_dir / "demo"
+    project.mkdir(parents=True)
+    (project / "README.md").write_text("# Demo\n", encoding="utf-8")
+    (project / ".env").write_text("PRIVATE=value\n", encoding="utf-8")
+
+    def fake_run(goal, actual_settings, **kwargs):
+        return SimpleNamespace(
+            achieved=True,
+            reason="selesai",
+            project="demo",
+            iterations=(),
+            files_written=1,
+            response="Proyek siap.",
+        )
+
+    service = AgentService(settings, run_goal=fake_run)
+    service.start()
+    try:
+        job = service.submit("Buat demo")
+        completed = wait_for(service, job.id)
+        assert completed.files == ["README.md"]
+        assert completed.to_dict()["files"] == ["README.md"]
     finally:
         service.stop()
 
@@ -169,6 +199,57 @@ def test_service_publishes_safe_progress_events(settings):
         service.stop()
 
 
+def test_http_api_streams_safe_progress_and_final_response(settings):
+    def fake_run(goal, actual_settings, *, on_event, **kwargs):
+        on_event(
+            {
+                "event": "tool.completed",
+                "tool": "write_file",
+                "ok": True,
+                "arguments": {"content": "private source"},
+            }
+        )
+        return SimpleNamespace(
+            achieved=True,
+            reason="selesai",
+            project="demo",
+            iterations=(),
+            files_written=1,
+            response="Implementasi selesai.",
+        )
+
+    service = AgentService(settings, run_goal=fake_run)
+    server = create_server(replace(settings, service_port=_free_port()), service)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    service.start()
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            submitted = client.post(f"{base}/goals", json={"goal": "Buat demo"})
+            assert submitted.status_code == 202
+            job_id = submitted.json()["id"]
+
+            with client.stream(
+                "GET",
+                f"{base}/goals/{job_id}/events",
+                headers={"Last-Event-ID": "1"},
+            ) as response:
+                assert response.status_code == 200
+                assert response.headers["content-type"].startswith("text/event-stream")
+                body = "".join(response.iter_text())
+
+        assert "id: 1\n" not in body
+        assert "event: progress" in body
+        assert "event: completed" in body
+        assert "Implementasi selesai." in body
+        assert "private source" not in body
+    finally:
+        server.shutdown()
+        service.stop()
+        server.server_close()
+
+
 def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
     service = AgentService(
         settings,
@@ -219,6 +300,102 @@ def test_http_api_accepts_concurrent_submissions_and_reports_status(settings):
             invalid = client.post(f"{base}/goals", json={"goal": "  "})
             assert invalid.status_code == 400
             assert client.get(f"{base}/goals/tidak-ada").status_code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.stop()
+
+
+def test_http_api_cancels_running_job(settings):
+    started = threading.Event()
+
+    def fake_run(goal, actual_settings, *, should_cancel, **kwargs):
+        started.set()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not should_cancel():
+            time.sleep(0.01)
+        if should_cancel():
+            raise AgentCancelled("Tugas dihentikan oleh pengguna.")
+        raise AssertionError("Cancellation request was not delivered")
+
+    service = AgentService(settings, run_goal=fake_run)
+    server = create_server(replace(settings, service_port=_free_port()), service)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    service.start()
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            submitted = client.post(f"{base}/goals", json={"goal": "Buat demo"})
+            assert submitted.status_code == 202
+            job_id = submitted.json()["id"]
+            assert started.wait(timeout=1)
+
+            cancelled = client.delete(f"{base}/goals/{job_id}")
+            assert cancelled.status_code == 200
+            assert cancelled.json()["status"] == "cancelling"
+            assert wait_for(service, job_id).status == "cancelled"
+            assert client.delete(f"{base}/goals/tidak-ada").status_code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        service.stop()
+
+
+def test_http_api_downloads_visible_files_and_zip(settings):
+    project = settings.workspace_dir / "download-demo"
+    project.mkdir(parents=True)
+    (project / "main.py").write_text("print('hello')\n", encoding="utf-8")
+    (project / "README.md").write_text("# Download demo\n", encoding="utf-8")
+    (project / ".env").write_text("PRIVATE=value\n", encoding="utf-8")
+
+    def fake_run(goal, actual_settings, **kwargs):
+        return SimpleNamespace(
+            achieved=True,
+            reason="selesai",
+            project="download-demo",
+            iterations=(),
+            files_written=2,
+            response="Proyek siap.",
+        )
+
+    service = AgentService(settings, run_goal=fake_run)
+    server = create_server(replace(settings, service_port=_free_port()), service)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    service.start()
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            submitted = client.post(f"{base}/goals", json={"goal": "Buat demo"})
+            assert submitted.status_code == 202
+            job_id = submitted.json()["id"]
+            assert wait_for(service, job_id).status == "completed"
+
+            file_response = client.get(f"{base}/goals/{job_id}/files/main.py")
+            assert file_response.status_code == 200
+            assert file_response.content == b"print('hello')\n"
+            assert file_response.headers["content-disposition"].endswith("filename*=UTF-8''main.py")
+
+            readme_response = client.get(f"{base}/goals/{job_id}/files/README.md")
+            assert readme_response.status_code == 200
+            assert readme_response.content == b"# Download demo\n"
+            assert readme_response.headers["content-disposition"].endswith(
+                "filename*=UTF-8''README.md"
+            )
+
+            hidden_response = client.get(f"{base}/goals/{job_id}/files/.env")
+            assert hidden_response.status_code == 404
+
+            archive_response = client.get(f"{base}/goals/{job_id}/files.zip")
+            assert archive_response.status_code == 200
+            assert archive_response.headers["content-type"] == "application/zip"
+            with zipfile.ZipFile(io.BytesIO(archive_response.content)) as archive:
+                assert archive.namelist() == [
+                    "download-demo/README.md",
+                    "download-demo/main.py",
+                ]
+                assert archive.read("download-demo/main.py") == b"print('hello')\n"
     finally:
         server.shutdown()
         server.server_close()

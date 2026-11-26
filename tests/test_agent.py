@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 from langchain_core.messages import AIMessage
 
-from agent.agent import AgentError, run_agent
+from agent.agent import AgentCancelled, AgentError, run_agent
 from agent.schemas import CommandResult
 
 
@@ -26,6 +26,23 @@ def test_agent_does_not_treat_error_read_as_successful_inspection(settings):
 
     assert result.ok
     assert (project / "main.py").read_text() == "print('ok')\n"
+
+
+def test_agent_honors_cancellation_before_model_request(settings):
+    project = settings.workspace_dir
+    project.mkdir(parents=True)
+    model = ScriptedModel([])
+
+    with pytest.raises(AgentCancelled, match="dihentikan"):
+        run_agent(
+            "Buat file aman.",
+            project,
+            settings,
+            llm=model,
+            should_cancel=lambda: True,
+        )
+
+    assert model.invoked_tools == []
 
 
 class ScriptedModel:

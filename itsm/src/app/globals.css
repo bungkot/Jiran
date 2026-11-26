@@ -235,6 +235,16 @@ button {
   color: #06201b;
 }
 
+.buttonStop {
+  border-color: rgba(255, 91, 105, 0.62);
+  background: #d93848;
+  color: #fff;
+}
+
+.buttonStop:hover:not(:disabled) {
+  background: #ee4555;
+}
+
 .buttonCompact {
   min-height: 32px;
   padding: 0 11px;
@@ -1219,7 +1229,7 @@ th {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
   overflow-y: auto;
   padding: 22px;
 }
@@ -1229,9 +1239,160 @@ th {
   padding: 10px 13px;
 }
 
+.playgroundMessages .message-user {
+  align-self: flex-end;
+  width: fit-content;
+  max-width: min(720px, 92%);
+  margin-left: auto;
+  border: 1px solid rgba(112, 169, 255, 0.2);
+  border-radius: 16px 16px 4px 16px;
+  background: rgba(112, 169, 255, 0.08);
+}
+
+.playgroundMessages .message-agent,
+.playgroundMessages .message-system {
+  align-self: flex-start;
+  max-width: min(720px, 100%);
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.playgroundMessages .message-agent p,
+.playgroundMessages .message-system p {
+  text-align: left;
+}
+
 .playgroundMessages .chatMessage p {
-  margin-top: 2px;
+  margin: 0;
   font-size: 12px;
+}
+
+.assistantFiles {
+  margin: 14px 0 2px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(145, 164, 184, 0.16);
+}
+
+.assistantFilesHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.assistantFilesTitleGroup {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.assistantFilesTitleGroup > div {
+  display: grid;
+  gap: 3px;
+}
+
+.assistantZipButton {
+  display: inline-flex;
+  min-width: 34px;
+  min-height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(82, 211, 176, 0.3);
+  border-radius: 7px;
+  background: rgba(82, 211, 176, 0.09);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.assistantZipButton:hover,
+.assistantZipButton:focus-visible {
+  border-color: var(--accent);
+  background: rgba(82, 211, 176, 0.16);
+}
+
+.assistantFilesHeader strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.assistantProjectPath {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.assistantFileCount {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(82, 211, 176, 0.18);
+  border-radius: 999px;
+  background: rgba(82, 211, 176, 0.07);
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.assistantFiles ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistantFiles li {
+  min-width: 0;
+}
+
+.assistantFileLink {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 1px solid rgba(145, 164, 184, 0.12);
+  border-radius: 9px;
+  background: rgba(145, 164, 184, 0.045);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.assistantFileLink:hover,
+.assistantFileLink:focus-visible {
+  border-color: rgba(82, 211, 176, 0.35);
+  background: rgba(82, 211, 176, 0.07);
+  outline: none;
+}
+
+.assistantFileType {
+  display: grid;
+  width: 32px;
+  height: 26px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(112, 169, 255, 0.1);
+  color: #a9c8ff;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.assistantFileName {
+  min-width: 0;
+  color: #cbd9e6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .playgroundError {

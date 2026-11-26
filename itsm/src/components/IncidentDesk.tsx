@@ -83,19 +83,16 @@ export default function IncidentDesk() {
 
   return (
     <>
-      <h1 className="visuallyHidden">ITSM operations</h1>
+      <h1 className="visuallyHidden">JIRAN CODING workspace</h1>
       <section className="ticketWorkspace">
         <aside className="ticketSidebar">
           <div className="sidebarHeading">
             <div>
-              <p className="eyebrow">SYSTEM</p>
-              <h2>Insiden</h2>
+              <p className="eyebrow">ITSM</p>
+              <h2>Self healing</h2>
             </div>
             <span className="incidentCount">{tickets.length}</span>
           </div>
-          <p className="sidebarDescription">
-            Dibuat otomatis oleh sistem self-healing.
-          </p>
           {error ? (
             <div className="errorBanner incidentError" role="alert">
               {error}

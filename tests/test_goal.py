@@ -5,10 +5,11 @@ from dataclasses import replace
 import pytest
 from langchain_core.messages import AIMessage
 
-from agent.agent import _RunLog
+from agent.agent import AgentResult, _RunLog
 from agent.config import SettingsError
 from agent.goal import (
     GoalAcceptance,
+    _evaluate,
     _heuristic_plan,
     _project_fingerprint,
     plan_goal,
@@ -172,6 +173,73 @@ def test_fast_path_menandakan_judge_skipped(settings):
     check = result.iterations[0].acceptance
     assert check.complete is True
     assert check.judge_skipped is True
+
+
+def test_unfinished_worker_skips_slow_judge(settings, monkeypatch):
+    project = settings.workspace_dir / "unfinished-worker"
+    project.mkdir(parents=True)
+    judge_calls = []
+
+    def fail_if_called(*args, **kwargs):
+        judge_calls.append(True)
+        raise AssertionError("Judge should not run for an unfinished worker")
+
+    monkeypatch.setattr("agent.goal._judge", fail_if_called)
+    result = AgentResult(
+        session_id="unfinished-worker",
+        response="",
+        steps=1,
+        tool_calls=0,
+        verifications=(),
+        finished=False,
+    )
+    check = _evaluate(
+        "Buat proyek",
+        project,
+        result,
+        GoalAcceptance(),
+        settings,
+        object(),
+        lambda command, sandbox, actual_settings: CommandResult(argv=[command]),
+        _RunLog(settings.logs_dir, "unfinished-worker"),
+        "unfinished-worker",
+    )
+
+    assert check.complete is False
+    assert check.judge_ok is False
+    assert check.judge_skipped is True
+    assert "belum selesai" in check.reason
+    assert judge_calls == []
+
+
+def test_default_judge_uses_bounded_json_generation(settings, monkeypatch):
+    options = []
+
+    def fake_get_llm(actual_settings, **overrides):
+        options.append(overrides)
+        return object()
+
+    def unfinished_worker(prompt, project, actual_settings, **kwargs):
+        return AgentResult(
+            session_id="bounded-judge",
+            response="",
+            steps=1,
+            tool_calls=0,
+            verifications=(),
+            finished=False,
+        )
+
+    monkeypatch.setattr("agent.goal.get_llm", fake_get_llm)
+    monkeypatch.setattr("agent.goal.run_agent", unfinished_worker)
+    run_goal_loop(
+        "Buat demo",
+        settings,
+        project_name="bounded-judge",
+        max_iterations=1,
+        use_plan=False,
+    )
+
+    assert options == [{"reasoning": False, "num_predict": 256, "format": "json"}]
 
 
 def test_mode_strict_memanggil_judge_pada_fast_path(settings):

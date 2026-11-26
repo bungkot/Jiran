@@ -85,7 +85,9 @@ Self-healing membuat atau memperbarui tiket saat layanan gagal atau metrik
 resource melewati ambang batas, lalu menandai tiket pulih saat kondisi kembali
 normal. Pesan di playground mengirim job langsung ke coding agent dan tidak
 membuat tiket. Tiket disimpan pada volume Docker `itsm_data`; riwayat chat
-playground hanya berlaku selama halaman terbuka.
+playground hanya berlaku selama halaman terbuka. Progres agent dikirim bertahap
+ke chat melalui Server-Sent Events (SSE); jawaban akhir muncul setelah job
+selesai.
 `ITSM_SYSTEM_TOKEN` dapat diisi token khusus untuk laporan self-healing; bila
 kosong, Compose memakai `AGENT_API_TOKEN`.
 

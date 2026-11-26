@@ -5,8 +5,8 @@ import "./globals.css";
 import { PROMETHEUS_URL } from "@/lib/prometheus";
 
 export const metadata = {
-  title: "ITSM — Ticket Operations",
-  description: "Workspace tiket ITSM dengan integrasi coding agent lokal.",
+  title: "JIRAN CODING — LLM-Assisted Development",
+  description: "Workspace pengembangan berbantuan LLM dengan ITSM self-healing.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -17,8 +17,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Link className="brand" href="/">
             <span className="brandMark">J</span>
             <span>
-              <strong>JIRAN ITSM</strong>
-              <small>Ticket operations</small>
+              <strong>JIRAN CODING</strong>
+              <small>LLM-Assisted Development</small>
             </span>
           </Link>
           <PrimaryNavigation />

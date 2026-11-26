@@ -28,6 +28,10 @@ class AgentError(RuntimeError):
     """A coding-agent run could not complete safely."""
 
 
+class AgentCancelled(AgentError):
+    """A coding-agent run was cancelled by the caller."""
+
+
 @dataclass(frozen=True)
 class Verification:
     command: str
@@ -352,6 +356,7 @@ def run_agent(
     allow_no_changes: bool = False,
     on_event: Callable[[dict[str, Any]], None] | None = None,
     on_output: Callable[[str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> AgentResult:
     request = user_request.strip()
     if not request:
@@ -403,11 +408,18 @@ def run_agent(
         max_agent_tool_calls=settings.max_agent_tool_calls,
     )
 
+    def check_cancelled() -> None:
+        if should_cancel is not None and should_cancel():
+            run_log.event("run.cancelled", session_id=session_id)
+            raise AgentCancelled("Tugas dihentikan oleh pengguna.")
+
     try:
         while step_count < settings.max_agent_steps:
+            check_cancelled()
             _enforce_context_limit(messages, settings.max_context_chars)
             response: Any = None
             for attempt in range(settings.llm_max_retries + 1):
+                check_cancelled()
                 try:
                     run_log.event(
                         "model.request",
@@ -417,7 +429,10 @@ def run_agent(
                         messages=_messages_for_log(messages),
                     )
                     response = agent_model.invoke(messages)
+                    check_cancelled()
                     break
+                except AgentCancelled:
+                    raise
                 except (httpx.HTTPError, ResponseError, TimeoutError, ValueError) as exc:
                     run_log.event(
                         "model.error",
@@ -494,6 +509,7 @@ def run_agent(
                 continue
             if calls:
                 for call in calls:
+                    check_cancelled()
                     call_id = str(call.get("id") or f"{session_id}-{tool_count}")
                     name = call.get("name")
                     if tool_count >= settings.max_agent_tool_calls:
@@ -637,6 +653,7 @@ def run_agent(
             verifications = []
             sandbox = Sandbox(project)
             for command in checks_to_run:
+                check_cancelled()
                 run_log.event(
                     "verification.started",
                     session_id=session_id,

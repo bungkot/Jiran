@@ -23,6 +23,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from ollama import ResponseError
 
 from .agent import (
+    AgentCancelled,
     AgentError,
     AgentResult,
     Verification,
@@ -188,20 +189,20 @@ def resolve_project_dir(settings: Settings, goal: str, project_name: str | None 
     return candidate
 
 
-def _visible_files(project: Path) -> list[str]:
+def visible_project_files(project: Path) -> list[str]:
     files: list[str] = []
     for path in project.rglob("*"):
         rel = path.relative_to(project).as_posix()
         parts = rel.split("/")
         if any(part in _IGNORED_TREE_DIRS for part in parts) or is_sensitive_relative_path(rel):
             continue
-        if path.is_file():
+        if path.is_file() and not path.is_symlink():
             files.append(rel)
     return sorted(files)
 
 
 def _project_tree(project: Path, limit: int = 80) -> str:
-    files = _visible_files(project)
+    files = visible_project_files(project)
     if not files:
         return "(folder proyek kosong)"
     if len(files) > limit:
@@ -525,7 +526,11 @@ def _evaluate(
     has_machine_checks = bool(acceptance.verification_commands or acceptance.required_files)
     judge_skipped = False
 
-    if not machine_ok:
+    if not result.finished:
+        judge_ok = False
+        judge_skipped = True
+        reason = "Putaran agent belum selesai; judge LLM dilewati."
+    elif not machine_ok:
         judge_ok = False
         if not verification_ok:
             reason = "Verifikasi masih gagal."
@@ -579,9 +584,6 @@ def _evaluate(
         fast_path=machine_ok and has_machine_checks,
         judge_skipped=judge_skipped,
     )
-    if not result.finished:
-        judge_ok = False
-        reason = f"{reason} (putaran agent belum selesai)".strip()
     return AcceptanceCheck(
         complete=verification_ok and not missing and judge_ok,
         reason=reason
@@ -664,6 +666,7 @@ def run_goal_loop(
     on_event: Callable[[dict[str, Any]], None] | None = None,
     on_output: Callable[[str], None] | None = None,
     use_plan: bool | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> GoalResult:
     """Buat proyek dan jalankan worker per todo kecil sampai tujuan tercapai.
 
@@ -689,9 +692,22 @@ def run_goal_loop(
     relative = project.relative_to(workspace).as_posix()
     criteria = acceptance or GoalAcceptance()
     verify_fn = run_verify or run_command_in_container
-    judge_model = judge or llm or get_llm(settings)
+    judge_model = judge or llm
+    if judge_model is None:
+        judge_model = get_llm(
+            settings,
+            reasoning=False,
+            num_predict=256,
+            format="json",
+        )
     session_id = uuid.uuid4().hex
     log = _RunLog(settings.logs_dir, session_id, on_event)
+
+    def check_cancelled() -> None:
+        if should_cancel is not None and should_cancel():
+            raise AgentCancelled("Tugas dihentikan oleh pengguna.")
+
+    check_cancelled()
     log.event(
         "goal.started",
         session_id=session_id,
@@ -735,6 +751,7 @@ def run_goal_loop(
         # Planner kustom bisa mengembalikan None/rencana kosong; jangan sampai
         # modulo oleh nol memecah loop sebelum satu pun tugas dijalankan.
         plan = GoalPlan(todos=[TodoItem(task=target_goal)])
+    check_cancelled()
     todos = plan.todos[:limit]
     total = len(todos)
     todo_sequence = [todos[(i - 1) % total] for i in range(1, limit + 1)]
@@ -746,6 +763,7 @@ def run_goal_loop(
     stuck = 0
 
     for index, todo in enumerate(todo_sequence, start=1):
+        check_cancelled()
         todo_no = ((index - 1) % total) + 1
         prompt = _todo_prompt(target_goal, todo, todo_no, total, completed, feedback)
         log.event(
@@ -773,7 +791,10 @@ def run_goal_loop(
                 allow_no_changes=allow_no_changes,
                 on_event=on_event,
                 on_output=on_output,
+                should_cancel=should_cancel,
             )
+        except AgentCancelled:
+            raise
         except AgentError as exc:
             log.event(
                 "goal.todo.failed",
@@ -790,6 +811,7 @@ def run_goal_loop(
                 f"Todo {index} gagal: {exc}",
             )
 
+        check_cancelled()
         check = _evaluate(
             target_goal,
             project,
@@ -803,6 +825,7 @@ def run_goal_loop(
             on_output,
             run_verify is None,
         )
+        check_cancelled()
         history += (GoalIteration(index=index, result=result, acceptance=check),)
         log.event(
             "goal.todo.completed",

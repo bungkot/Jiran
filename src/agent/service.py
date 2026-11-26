@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 import os
 import queue
@@ -17,14 +18,16 @@ import socket
 import threading
 import time
 import uuid
+import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -35,11 +38,18 @@ from prometheus_client import (
     generate_latest,
 )
 
+from .agent import AgentCancelled
 from .config import Settings
-from .goal import GoalAcceptance, GoalError, project_slug, run_goal_loop
+from .goal import (
+    GoalAcceptance,
+    GoalError,
+    project_slug,
+    run_goal_loop,
+    visible_project_files,
+)
 from .progress import summarize_event
 
-TERMINAL_STATUSES = frozenset({"completed", "failed"})
+TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
 def _now() -> str:
@@ -52,6 +62,8 @@ _MAX_REQUIRED_FILES = 50
 _MAX_COMMAND_CHARS = 4000
 _MAX_QUEUED_JOBS = 100
 _DEFAULT_ITERATION_LIMIT = 50
+_MAX_STREAM_EVENTS_PER_JOB = 512
+_MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 
 
 class QueueFullError(RuntimeError):
@@ -132,13 +144,16 @@ class Job:
     project: str = ""
     iterations: int = 0
     files_written: int = 0
+    files: list[str] = field(default_factory=list)
     response: str = ""
     error: str = ""  # detail internal; hanya ditulis ke log/disk
     error_public: str = ""  # pesan aman untuk klien HTTP
     progress: str = ""
     progress_event: str = ""
     progress_seq: int = 0
+    events: list[dict[str, Any]] = field(default_factory=list, repr=False)
     options: dict[str, Any] = field(default_factory=dict, repr=False)
+    cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -154,6 +169,7 @@ class Job:
             "project": self.project,
             "iterations": self.iterations,
             "files_written": self.files_written,
+            "files": self.files,
             "response": self.response,
             "error": self.error_public,
             "progress": self.progress,
@@ -178,6 +194,7 @@ class AgentService:
         self._queue: queue.Queue[Job] = queue.Queue(maxsize=_MAX_QUEUED_JOBS)
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        self._changed = threading.Condition(self._lock)
         self._metrics_registry = CollectorRegistry()
         self._jobs_submitted = Counter(
             "jiran_agent_jobs_submitted_total",
@@ -225,8 +242,8 @@ class AgentService:
         target = goal.strip()
         if not target:
             raise ValueError("Goal tidak boleh kosong.")
-        with self._lock:
-            running = sum(item.status == "running" for item in self._jobs.values())
+        with self._changed:
+            running = sum(item.status in {"running", "cancelling"} for item in self._jobs.values())
             if self._queue.qsize() + running >= _MAX_QUEUED_JOBS:
                 raise QueueFullError("Antrean goal penuh; coba lagi nanti.")
             job = Job(
@@ -237,6 +254,7 @@ class AgentService:
                 options=dict(options or {}),
             )
             self._jobs[job.id] = job
+            self._record_event_locked(job, "progress", "Job masuk antrean")
             self._queue.put(job)
             self._jobs_submitted.inc()
         self._persist(job)
@@ -245,15 +263,81 @@ class AgentService:
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             job = self._jobs.get(job_id)
-            return Job(**job.__dict__) if job else None
+            return (
+                Job(
+                    **{
+                        **job.__dict__,
+                        "events": list(job.events),
+                        "files": list(job.files),
+                    }
+                )
+                if job
+                else None
+            )
+
+    def cancel(self, job_id: str) -> Job | None:
+        with self._changed:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if job.status in TERMINAL_STATUSES:
+                return Job(**{**job.__dict__, "events": list(job.events), "files": list(job.files)})
+            job.cancel_event.set()
+            job.status = "cancelling"
+            job.progress = "Permintaan berhenti diterima"
+            job.progress_event = "cancel.requested"
+            self._record_event_locked(job, "progress", job.progress)
+            snapshot = Job(**{**job.__dict__, "events": list(job.events), "files": list(job.files)})
+        self._persist(job)
+        return snapshot
 
     def list_jobs(self) -> list[Job]:
         with self._lock:
-            return [Job(**job.__dict__) for job in self._jobs.values()]
+            return [
+                Job(
+                    **{
+                        **job.__dict__,
+                        "events": list(job.events),
+                        "files": list(job.files),
+                    }
+                )
+                for job in self._jobs.values()
+            ]
+
+    def wait_for_events(
+        self, job_id: str, after: int, timeout: float
+    ) -> tuple[list[dict[str, Any]], str, bool] | None:
+        with self._changed:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if not any(event["id"] > after for event in job.events) and (
+                job.status not in TERMINAL_STATUSES or job.finished_at is None
+            ):
+                self._changed.wait(timeout)
+                job = self._jobs.get(job_id)
+                if job is None:
+                    return None
+            events = [dict(event) for event in job.events if event["id"] > after]
+            return events, job.status, job.finished_at is not None
+
+    def _record_event_locked(self, job: Job, event: str, text: str) -> None:
+        job.progress_seq += 1
+        job.events.append(
+            {
+                "id": job.progress_seq,
+                "event": event,
+                "text": text,
+                "created_at": _now(),
+            }
+        )
+        if len(job.events) > _MAX_STREAM_EVENTS_PER_JOB:
+            del job.events[:-_MAX_STREAM_EVENTS_PER_JOB]
+        self._changed.notify_all()
 
     def stats(self) -> dict[str, Any]:
         with self._lock:
-            running = sum(job.status == "running" for job in self._jobs.values())
+            running = sum(job.status in {"running", "cancelling"} for job in self._jobs.values())
         return {"queued": self._queue.qsize(), "running": running}
 
     def prometheus_metrics(self) -> bytes:
@@ -284,10 +368,14 @@ class AgentService:
         message = summarize_event(event)
         if message is None:
             return
-        with self._lock:
+        with self._changed:
+            if event.get("event") == "goal.started":
+                project = event.get("project")
+                if isinstance(project, str):
+                    job.project = project
             job.progress = message
             job.progress_event = str(event.get("event", ""))
-            job.progress_seq += 1
+            self._record_event_locked(job, "progress", message)
         self._persist(job)
 
     @contextmanager
@@ -330,12 +418,14 @@ class AgentService:
                 continue
             started = time.monotonic()
             try:
-                with self._lock:
+                with self._changed:
+                    if job.cancel_event.is_set():
+                        raise AgentCancelled("Tugas dihentikan oleh pengguna.")
                     job.status = "running"
                     job.started_at = _now()
                     job.progress = "Agent mulai"
                     job.progress_event = "run.started"
-                    job.progress_seq += 1
+                    self._record_event_locked(job, "progress", job.progress)
                 self._persist(job)
                 publish_progress = partial(self._publish_progress, job)
                 with self._project_lock(job):
@@ -344,15 +434,30 @@ class AgentService:
                         self.settings,
                         **goal_kwargs(job.options),
                         on_event=publish_progress,
+                        should_cancel=job.cancel_event.is_set,
                     )
+                project_path = self.settings.workspace_dir.resolve() / result.project
+                files = visible_project_files(project_path)
                 with self._lock:
+                    if job.cancel_event.is_set():
+                        raise AgentCancelled("Tugas dihentikan oleh pengguna.")
                     job.achieved = bool(result.achieved)
                     job.reason = result.reason
                     job.project = result.project
                     job.iterations = len(result.iterations)
                     job.files_written = result.files_written
+                    job.files = files
                     job.response = result.response
                     job.status = "completed" if result.achieved else "failed"
+            except AgentCancelled:
+                with self._lock:
+                    job.status = "cancelled"
+                    job.reason = "Tugas dihentikan oleh pengguna."
+                    project_path = (
+                        self.settings.workspace_dir.resolve() / job.project if job.project else None
+                    )
+                    if project_path is not None and project_path.is_dir():
+                        job.files = visible_project_files(project_path)
             except GoalError as exc:
                 with self._lock:
                     job.status = "failed"
@@ -366,8 +471,19 @@ class AgentService:
                     job.error_public = "Worker mengalami error tak terduga."
                     job.reason = "Worker mengalami error tak terduga."
             finally:
-                with self._lock:
+                with self._changed:
                     job.finished_at = _now()
+                    final_text = (
+                        job.response
+                        or job.error_public
+                        or (job.reason if job.status == "cancelled" else "")
+                        or "Coding agent belum dapat menyelesaikan tugas."
+                    )
+                    self._record_event_locked(
+                        job,
+                        job.status if job.status in TERMINAL_STATUSES else "failed",
+                        final_text,
+                    )
                 self._persist(job)
                 self._jobs_finished.labels(status=job.status).inc()
                 self._job_duration.labels(status=job.status).observe(time.monotonic() - started)
@@ -376,6 +492,7 @@ class AgentService:
 
 class _GoalHandler(BaseHTTPRequestHandler):
     service: AgentService
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - API BaseHTTPRequestHandler
         return
@@ -395,6 +512,110 @@ class _GoalHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_download(
+        self,
+        body: bytes,
+        *,
+        filename: str,
+        content_type: str,
+    ) -> None:
+        encoded_name = quote(filename, safe="")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{encoded_name}")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _job_for_download(self, job_id: str) -> Job | None:
+        job = self.service.get(job_id)
+        if job is None:
+            self._send(404, {"error": "Job coding agent tidak ditemukan."})
+            return None
+        if job.status not in TERMINAL_STATUSES:
+            self._send(409, {"error": "File belum siap diunduh."})
+            return None
+        return job
+
+    def _resolve_job_file(self, job: Job, relative_path: str) -> Path | None:
+        if not relative_path or "\\" in relative_path or relative_path not in job.files:
+            return None
+        relative = PurePosixPath(relative_path)
+        if (
+            relative.is_absolute()
+            or relative.as_posix() != relative_path
+            or any(part in {"", ".", ".."} for part in relative.parts)
+        ):
+            return None
+        try:
+            workspace = self.service.settings.workspace_dir.resolve(strict=True)
+            project = (workspace / job.project).resolve(strict=True)
+            project.relative_to(workspace)
+            candidate = project.joinpath(*relative.parts)
+            if candidate.is_symlink():
+                return None
+            target = candidate.resolve(strict=True)
+            target.relative_to(project)
+        except (OSError, ValueError):
+            return None
+        return target if target.is_file() else None
+
+    def _download_job_file(self, job_id: str, relative_path: str) -> None:
+        job = self._job_for_download(job_id)
+        if job is None:
+            return
+        target = self._resolve_job_file(job, relative_path)
+        if target is None:
+            self._send(404, {"error": "File hasil tidak ditemukan."})
+            return
+        try:
+            body = target.read_bytes()
+        except OSError:
+            self._send(404, {"error": "File hasil tidak ditemukan."})
+            return
+        self._send_download(
+            body,
+            filename=PurePosixPath(relative_path).name,
+            content_type="application/octet-stream",
+        )
+
+    def _download_job_archive(self, job_id: str) -> None:
+        job = self._job_for_download(job_id)
+        if job is None:
+            return
+        files: list[tuple[str, Any]] = []
+        total_size = 0
+        for relative_path in job.files:
+            target = self._resolve_job_file(job, relative_path)
+            if target is None:
+                self._send(404, {"error": "Daftar file hasil sudah berubah."})
+                return
+            try:
+                total_size += target.stat().st_size
+            except OSError:
+                self._send(404, {"error": "Daftar file hasil sudah berubah."})
+                return
+            if total_size > _MAX_ARCHIVE_BYTES:
+                self._send(413, {"error": "Ukuran proyek terlalu besar untuk arsip ZIP."})
+                return
+            files.append((relative_path, target))
+        if not files:
+            self._send(404, {"error": "Proyek tidak memiliki file untuk diunduh."})
+            return
+
+        archive = io.BytesIO()
+        project_name = PurePosixPath(job.project).name
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+            for relative_path, target in files:
+                bundle.write(target, f"{project_name}/{relative_path}")
+        self._send_download(
+            archive.getvalue(),
+            filename=f"{project_name}.zip",
+            content_type="application/zip",
+        )
 
     def _authorized(self) -> bool:
         """Bearer token opsional (AGENT_API_TOKEN). Tanpa token, semua klien diizinkan."""
@@ -418,6 +639,24 @@ class _GoalHandler(BaseHTTPRequestHandler):
             self._send_metrics()
         elif not self._authorized():
             return
+        elif path.startswith("/goals/") and path.endswith("/files.zip"):
+            job_id = path[len("/goals/") : -len("/files.zip")].rstrip("/")
+            if not job_id or "/" in job_id:
+                self._send(404, {"error": "job tidak ditemukan"})
+            else:
+                self._download_job_archive(job_id)
+        elif path.startswith("/goals/") and "/files/" in path:
+            job_part, relative_path = path[len("/goals/") :].split("/files/", 1)
+            if not job_part or "/" in job_part:
+                self._send(404, {"error": "job tidak ditemukan"})
+            else:
+                self._download_job_file(job_part, unquote(relative_path))
+        elif path.startswith("/goals/") and path.endswith("/events"):
+            job_id = path[len("/goals/") : -len("/events")].rstrip("/")
+            if not job_id or "/" in job_id:
+                self._send(404, {"error": "job tidak ditemukan"})
+            else:
+                self._stream_events(job_id)
         elif path == "/goals":
             self._send(200, {"jobs": [job.to_dict() for job in self.service.list_jobs()]})
         elif path.startswith("/goals/"):
@@ -428,6 +667,48 @@ class _GoalHandler(BaseHTTPRequestHandler):
                 self._send(200, job.to_dict())
         else:
             self._send(404, {"error": "endpoint tidak ditemukan"})
+
+    def _stream_events(self, job_id: str) -> None:
+        if self.service.get(job_id) is None:
+            self._send(404, {"error": "job tidak ditemukan"})
+            return
+        try:
+            last_event_id = max(0, int(self.headers.get("Last-Event-ID", "0")))
+        except ValueError:
+            last_event_id = 0
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        self.close_connection = True
+
+        try:
+            self.wfile.write(b"retry: 1500\n\n")
+            self.wfile.flush()
+            while True:
+                batch = self.service.wait_for_events(job_id, last_event_id, 15.0)
+                if batch is None:
+                    return
+                events, status, finished = batch
+                for event in events:
+                    payload = json.dumps(
+                        {"text": event["text"], "created_at": event["created_at"]},
+                        ensure_ascii=True,
+                    )
+                    message = f"id: {event['id']}\nevent: {event['event']}\ndata: {payload}\n\n"
+                    self.wfile.write(message.encode("utf-8"))
+                    self.wfile.flush()
+                    last_event_id = event["id"]
+                if finished and status in TERMINAL_STATUSES and not events:
+                    return
+                if not events:
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def do_POST(self) -> None:  # noqa: N802 - API BaseHTTPRequestHandler
         if urlsplit(self.path).path != "/goals":
@@ -474,6 +755,21 @@ class _GoalHandler(BaseHTTPRequestHandler):
                 "queue": self.service.stats(),
             },
         )
+
+    def do_DELETE(self) -> None:  # noqa: N802 - API BaseHTTPRequestHandler
+        path = urlsplit(self.path).path
+        prefix = "/goals/"
+        job_id = path.removeprefix(prefix)
+        if not path.startswith(prefix) or not job_id or "/" in job_id:
+            self._send(404, {"error": "job tidak ditemukan"})
+            return
+        if not self._authorized():
+            return
+        job = self.service.cancel(job_id)
+        if job is None:
+            self._send(404, {"error": "job tidak ditemukan"})
+            return
+        self._send(200, job.to_dict())
 
 
 def create_server(settings: Settings, service: AgentService) -> ThreadingHTTPServer:

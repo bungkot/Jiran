@@ -20,7 +20,7 @@ export async function POST(
   try {
     payload = await request.json();
   } catch {
-    return Response.json({ error: "Body harus berupa JSON." }, { status: 400 });
+    return Response.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
   const message =
     typeof payload === "object" &&
@@ -30,18 +30,18 @@ export async function POST(
       ? payload.message.trim()
       : "";
   if (!message) {
-    return Response.json({ error: "Pesan wajib diisi." }, { status: 400 });
+    return Response.json({ error: "A message is required." }, { status: 400 });
   }
   if (message.length > MAX_MESSAGE_LENGTH) {
     return Response.json(
-      { error: `Pesan maksimal ${MAX_MESSAGE_LENGTH} karakter.` },
+      { error: `Messages must be ${MAX_MESSAGE_LENGTH} characters or fewer.` },
       { status: 413 },
     );
   }
 
   const existing = await getTicket(id);
   if (!existing) {
-    return Response.json({ error: "Tiket tidak ditemukan." }, { status: 404 });
+    return Response.json({ error: "Ticket not found." }, { status: 404 });
   }
   const contextMessages = existing.messages
     .filter((item) => item.role !== "system")
@@ -49,57 +49,61 @@ export async function POST(
     .map((item) => `${item.role}: ${item.content.slice(0, 1000)}`)
     .join("\n");
   const goal = [
-    `Tiket ${existing.id}: ${existing.title}`,
-    "Konteks percakapan sebelumnya:",
-    contextMessages || "(tidak ada)",
-    "Permintaan terbaru:",
+    `Ticket ${existing.id}: ${existing.title}`,
+    "Previous conversation:",
+    contextMessages || "(none)",
+    "Latest request:",
     message,
   ].join("\n\n");
 
   await updateTicket(id, (ticket) => {
     addTicketMessage(ticket, "user", message);
     ticket.status = "in_progress";
-    addTicketTransaction(ticket, "Pesan ditambahkan", "Permintaan lanjutan dicatat.");
+    addTicketTransaction(
+      ticket,
+      "Message added",
+      "Follow-up request recorded.",
+    );
   });
   try {
     const accepted = await submitAgentGoal(goal);
     if (!accepted.id || !accepted.status) {
-      throw new Error("Respons coding agent tidak memiliki id/status job.");
+      throw new Error("The coding-agent response is missing a task ID or status.");
     }
     const updated = await updateTicket(id, (ticket) => {
       ticket.jobs.push({
         id: accepted.id,
         status: accepted.status,
-        progress: "Permintaan masuk antrean coding agent.",
+        progress: "Request queued for the coding agent.",
         progressSeq: 0,
         createdAt: new Date().toISOString(),
       });
       addTicketTransaction(
         ticket,
-        "Dikirim ke coding agent",
-        `Job ${accepted.id} diterima dengan status ${accepted.status}.`,
+        "Sent to coding agent",
+        `Task ${accepted.id} was accepted with status ${accepted.status}.`,
       );
     });
     return Response.json(updated, { status: 202 });
   } catch (error) {
-    console.error(`ITSM gagal mengirim pesan tiket ${id} ke coding agent`, error);
+    console.error(`ITSM failed to send a message for ticket ${id} to the coding agent`, error);
     const updated = await updateTicket(id, (ticket) => {
       ticket.status = "failed";
       addTicketMessage(
         ticket,
         "system",
-        "Coding agent tidak dapat menerima pesan. Periksa koneksi layanan lalu coba lagi.",
+        "The coding agent could not accept the message. Check the service connection and try again.",
       );
       addTicketTransaction(
         ticket,
-        "Pengiriman gagal",
-        "Coding agent tidak menerima job; percakapan tetap tersimpan.",
+        "Delivery failed",
+        "The coding agent did not accept the task. The conversation was saved.",
       );
     });
     return Response.json(
       {
         ticket: updated,
-        error: "Coding agent tidak dapat menerima permintaan.",
+        error: "The coding agent could not accept the request.",
       },
       { status: 502 },
     );

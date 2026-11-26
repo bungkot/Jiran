@@ -19,7 +19,7 @@ export async function POST(
   const { id } = await context.params;
   const existing = await getTicket(id);
   if (!existing) {
-    return Response.json({ error: "Tiket tidak ditemukan." }, { status: 404 });
+    return Response.json({ error: "Ticket not found." }, { status: 404 });
   }
 
   const snapshots: AgentJobSnapshot[] = [];
@@ -30,9 +30,9 @@ export async function POST(
       }
     }
   } catch (error) {
-    console.error(`ITSM gagal menyinkronkan tiket ${id}`, error);
+    console.error(`ITSM failed to sync ticket ${id}`, error);
     return Response.json(
-      { error: "Status coding agent belum dapat diperbarui." },
+      { error: "Unable to update the coding-agent status." },
       { status: 502 },
     );
   }
@@ -64,12 +64,12 @@ export async function POST(
       if (statusChanged) {
         addTicketTransaction(
           ticket,
-          `Status job: ${nextStatus}`,
-          `Job ${job.id} berubah dari ${previousStatus} menjadi ${nextStatus}.`,
+          `Task status: ${nextStatus}`,
+          `Task ${job.id} changed from ${previousStatus} to ${nextStatus}.`,
         );
       }
       if (progressChanged) {
-        addTicketTransaction(ticket, "Progres coding agent", nextProgress);
+        addTicketTransaction(ticket, "Agent progress", nextProgress);
       }
       if (
         TERMINAL_STATUSES.has(nextStatus) &&
@@ -79,11 +79,11 @@ export async function POST(
           snapshot.response ||
           snapshot.reason ||
           snapshot.error ||
-          `Job berakhir dengan status ${nextStatus}.`;
+          `Task ended with status ${nextStatus}.`;
         addTicketMessage(ticket, "agent", reply);
         addTicketTransaction(
           ticket,
-          nextStatus === "completed" ? "Pekerjaan selesai" : "Pekerjaan gagal",
+          nextStatus === "completed" ? "Task completed" : "Task failed",
           reply,
         );
       }

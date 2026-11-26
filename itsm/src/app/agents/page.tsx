@@ -19,14 +19,14 @@ export default async function Page() {
 
   return (
     <>
-      <h2>Jiran Agent</h2>
+      <h2>Agent availability</h2>
       <table>
         <thead>
           <tr>
             <th>Agent ID</th>
             <th>Instance</th>
             <th>Status</th>
-            <th>Available 1h (%)</th>
+            <th>Availability (1h)</th>
           </tr>
         </thead>
         <tbody>

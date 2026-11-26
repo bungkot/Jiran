@@ -28,14 +28,14 @@ export default async function Page() {
       query("prometheus_ready"),
     ]);
   } catch (error) {
-    console.error("ITSM monitoring tidak dapat mengambil metrik Prometheus", error);
+    console.error("ITSM could not retrieve Prometheus metrics", error);
     return (
       <section className="monitoringPage">
         <h1>Monitoring</h1>
         <p className="monitoringError">
-          Prometheus belum tersedia. Jalankan{" "}
-          <code>docker compose --profile monitoring up -d</code> untuk membuka
-          dashboard metrik.
+          Prometheus is unavailable. Run{" "}
+          <code>docker compose --profile monitoring up -d</code> to start the
+          metrics dashboard.
         </p>
       </section>
     );
@@ -58,9 +58,10 @@ export default async function Page() {
     .sort((a, b) => a.job.localeCompare(b.job));
   const statusDetail = (job: string) => {
     const rows = health.filter((item) => item.job === job);
-    if (rows.length === 0) return "belum ditemukan";
-    const down = rows.filter((item) => item.status === "DOWN").length;
-    return `${rows.length} instance, ${rows.length - down} up`;
+    if (rows.length === 0) return "No instances found";
+    const up = rows.filter((item) => item.status === "UP").length;
+    const instanceLabel = rows.length === 1 ? "instance" : "instances";
+    return `${up} of ${rows.length} ${instanceLabel} up`;
   };
   const healthStatus = (job: string) =>
     health.some((item) => item.job === job && item.status === "UP")
@@ -69,44 +70,44 @@ export default async function Page() {
 
   return (
     <section className="monitoringPage">
-      <h1>Monitoring layanan</h1>
+      <h1>Service monitoring</h1>
 
       <section className="nodeMetricsSection" aria-labelledby="node-metrics-title">
         <div className="monitoringSectionHeading">
           <div>
             <p className="eyebrow">HOST OVERVIEW</p>
-            <h2 id="node-metrics-title">Metrik node</h2>
+            <h2 id="node-metrics-title">Node metrics</h2>
             <p className="monitoringSectionDescription">
-              Ringkasan penggunaan resource host dari Node Exporter.
+              Host resource utilization from Node Exporter.
             </p>
           </div>
           <span className="monitoringSourceBadge">NODE EXPORTER</span>
         </div>
         <div className="nodeMetricGrid">
           <MetricCard
-            title="Usage CPU"
+            title="CPU usage"
             value={fmtPct(findValue(cpu))}
-            subtitle="Rata-rata penggunaan CPU 5 menit"
+            subtitle="5-minute average CPU utilization"
           />
           <MetricCard
-            title="Memori terpakai"
+            title="Memory used"
             value={fmtPct(findValue(memPct))}
-            subtitle={`Total ${fmtBytes(findValue(memTotal))}`}
+            subtitle={`Total: ${fmtBytes(findValue(memTotal))}`}
           />
           <MetricCard
-            title="Disk / Used"
+            title="Disk used"
             value={fmtPct(findValue(diskPct))}
-            subtitle="Filesystem root terpakai"
+            subtitle="Root filesystem utilization"
           />
           <MetricCard
-            title="Load Average 1m"
+            title="Load average (1 min)"
             value={fmtNumber(findValue(load1))}
-            subtitle="Rata-rata beban selama 1 menit"
+            subtitle="Average system load over 1 minute"
           />
         </div>
       </section>
 
-      <h2>Status layanan</h2>
+      <h2>Service status</h2>
       <div className="monitoringGrid">
         <ServiceCard
           title="Jiran Agent"
@@ -130,11 +131,11 @@ export default async function Page() {
         />
       </div>
 
-      <h2>Layanan peralatan</h2>
+      <h2>Infrastructure services</h2>
       <div className="monitoringGrid">
         <MetricCard
           title="Ollama Exporter"
-          value={findValue(ollamaUp) === 1 ? "Aktif" : "Inaktif"}
+          value={findValue(ollamaUp) === 1 ? "Available" : "Unavailable"}
           subtitle={`ollama_up: ${fmtNumber(findValue(ollamaUp))}`}
         />
         <MetricCard

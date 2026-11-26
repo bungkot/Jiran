@@ -99,7 +99,7 @@ function agentConfig(): { baseUrl: string; token: string } {
   const baseUrl = process.env.AGENT_SERVICE_URL;
   const token = process.env.AGENT_API_TOKEN;
   if (!baseUrl || !token) {
-    throw new Error("AGENT_SERVICE_URL dan AGENT_API_TOKEN harus dikonfigurasi.");
+    throw new Error("AGENT_SERVICE_URL and AGENT_API_TOKEN must be configured.");
   }
   return { baseUrl: baseUrl.replace(/\/+$/, ""), token };
 }
@@ -115,10 +115,10 @@ async function parseResponse<T>(
       typeof payload.error === "string"
         ? payload.error
         : `HTTP ${response.status}`;
-    throw new Error(`Agent API menolak permintaan: ${detail}`);
+    throw new Error(`The agent API rejected the request: ${detail}`);
   }
   if (!isPayload(payload)) {
-    throw new Error("Respons coding agent bukan objek JSON.");
+    throw new Error("The coding-agent response is not a JSON object.");
   }
   return payload;
 }
@@ -246,7 +246,7 @@ export async function proxyAgentDownload(upstream: Response): Promise<Response> 
         ? payload.error
         : `HTTP ${upstream.status}`;
     return Response.json(
-      { error: `Unduhan agent gagal: ${detail}` },
+      { error: `Agent download failed: ${detail}` },
       { status: upstream.status },
     );
   }

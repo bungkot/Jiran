@@ -81,7 +81,7 @@ async function loadTickets(): Promise<Ticket[]> {
     const contents = await readFile(dataFile, "utf8");
     const tickets: unknown = JSON.parse(contents);
     if (!Array.isArray(tickets) || !tickets.every(isTicket)) {
-      throw new Error("Format penyimpanan tiket tidak valid.");
+      throw new Error("The ticket storage format is invalid.");
     }
     return tickets;
   } catch (error) {
@@ -153,7 +153,7 @@ export async function syncSystemIncident(
       if (!existing) return null;
       existing.status = "resolved";
       addTicketMessage(existing, "system", incident.detail);
-      addTicketTransaction(existing, "Insiden pulih", incident.detail);
+      addTicketTransaction(existing, "Incident recovered", incident.detail);
       existing.updatedAt = now();
       return existing;
     }
@@ -185,7 +185,7 @@ export async function syncSystemIncident(
         },
       ],
       transactions: [
-        makeTransaction("Insiden terdeteksi", incident.detail),
+        makeTransaction("Incident detected", incident.detail),
       ],
       jobs: [],
     };

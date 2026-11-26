@@ -2,28 +2,33 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Ticket } from "@/lib/tickets";
+import {
+  formatAgentProgress,
+  formatIncidentText,
+  formatJobStatus,
+} from "@/lib/displayText";
 
 const STATUS_LABELS: Record<Ticket["status"], string> = {
-  open: "Baru",
-  in_progress: "Ditangani",
-  resolved: "Pulih",
-  failed: "Gagal",
+  open: "New",
+  in_progress: "In progress",
+  resolved: "Resolved",
+  failed: "Failed",
 };
 
 const SEVERITY_LABELS: Record<NonNullable<Ticket["severity"]>, string> = {
-  low: "Rendah",
-  medium: "Sedang",
-  high: "Tinggi",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
 };
 
 const MESSAGE_ROLE_LABELS: Record<Ticket["messages"][number]["role"], string> = {
-  user: "Pelapor",
+  user: "Reporter",
   agent: "Agent",
-  system: "Sistem",
+  system: "System",
 };
 
 function formatTime(value: string): string {
-  return new Intl.DateTimeFormat("id-ID", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
@@ -100,11 +105,11 @@ export default function IncidentDesk() {
   const refreshTickets = useCallback(async () => {
     const response = await fetch("/api/tickets", { cache: "no-store" });
     if (!response.ok) {
-      throw new Error(`Gagal memuat insiden (HTTP ${response.status}).`);
+      throw new Error(`Failed to load incidents (HTTP ${response.status}).`);
     }
     const payload: unknown = await response.json();
     if (!Array.isArray(payload) || !payload.every(isTicket)) {
-      throw new Error("Respons daftar insiden tidak valid.");
+      throw new Error("The incident list response is invalid.");
     }
     setTickets(payload);
     setSelectedId((current) =>
@@ -123,7 +128,7 @@ export default function IncidentDesk() {
       } catch (reason) {
         if (active) {
           setError(
-            reason instanceof Error ? reason.message : "Gagal memuat insiden.",
+            reason instanceof Error ? reason.message : "Failed to load incidents.",
           );
         }
       } finally {
@@ -143,13 +148,13 @@ export default function IncidentDesk() {
 
   return (
     <>
-      <h1 className="visuallyHidden">Tiket insiden</h1>
-      <section className="ticketWorkspace" aria-label="Ruang kerja tiket">
+      <h1 className="visuallyHidden">Incident tickets</h1>
+      <section className="ticketWorkspace" aria-label="Ticket workspace">
         <aside className="ticketSidebar">
           <div className="sidebarHeading">
             <div>
               <p className="eyebrow">ITSM</p>
-              <h2>Insiden</h2>
+              <h2>Incidents</h2>
             </div>
             <span className="incidentCount">{tickets.length}</span>
           </div>
@@ -158,16 +163,16 @@ export default function IncidentDesk() {
               {error}
             </div>
           ) : null}
-          <div className="ticketList" aria-label="Daftar insiden">
+          <div className="ticketList" aria-label="Incident list">
             {loading && tickets.length === 0 ? (
-              <p className="emptyHint">Memuat insiden...</p>
+              <p className="emptyHint">Loading incidents...</p>
             ) : tickets.length === 0 ? (
               <div className="emptyIncident">
                 <span className="emptyIncidentMark" aria-hidden="true">
                   —
                 </span>
-                <strong>Belum ada insiden</strong>
-                <p>Gangguan yang terdeteksi akan tercatat di sini.</p>
+                <strong>No incidents yet</strong>
+                <p>Detected issues will appear here.</p>
               </div>
             ) : (
               tickets.map((ticket) => (
@@ -193,9 +198,9 @@ export default function IncidentDesk() {
                       </span>
                     </span>
                   </span>
-                  <strong>{ticket.title}</strong>
+                  <strong>{formatIncidentText(ticket.title)}</strong>
                   <span className="ticketItemDate">
-                    {ticket.source === "self-heal" ? "Self-healing" : "Sistem"}{" "}
+                    {ticket.source === "self-heal" ? "Self-healing" : "System"}{" "}
                     · {formatTime(ticket.updatedAt)}
                   </span>
                 </button>
@@ -204,31 +209,31 @@ export default function IncidentDesk() {
           </div>
           <div className="agentQueueNote">
             <span className="statusDot" />
-            <span>Daftar diperbarui otomatis</span>
+            <span>List updates automatically</span>
           </div>
         </aside>
 
-        <section className="ticketDetailPanel" aria-label="Detail insiden">
+        <section className="ticketDetailPanel" aria-label="Incident details">
           {selectedTicket ? (
             <>
               <header className="ticketDetailHeader">
                 <div className="ticketDetailTitle">
                   <p className="eyebrow">
-                    INSIDEN <span aria-hidden="true">/</span>{" "}
+                    INCIDENT <span aria-hidden="true">/</span>{" "}
                     {selectedTicket.id}
                   </p>
-                  <h2>{selectedTicket.title}</h2>
+                  <h2>{formatIncidentText(selectedTicket.title)}</h2>
                   <p>
                     {selectedTicket.source === "self-heal"
-                      ? "Terdeteksi otomatis oleh self-healing"
-                      : "Dilaporkan ke sistem"}
+                      ? "Automatically detected by self-healing"
+                      : "Reported to the system"}
                   </p>
                 </div>
                 <div className="ticketDetailBadges">
                   <span
                     className={`severityBadge severity-${selectedTicket.severity ?? "medium"}`}
                   >
-                    Severity {SEVERITY_LABELS[selectedTicket.severity ?? "medium"]}
+                    {`Severity: ${SEVERITY_LABELS[selectedTicket.severity ?? "medium"]}`}
                   </span>
                   <span
                     className={`statusBadge status-${selectedTicket.status}`}
@@ -239,21 +244,21 @@ export default function IncidentDesk() {
               </header>
 
               <div className="ticketDetailContent">
-                <section className="ticketFacts" aria-label="Informasi tiket">
+                <section className="ticketFacts" aria-label="Ticket information">
                   <div>
-                    <span>Dibuat</span>
+                    <span>Created</span>
                     <strong>{formatTime(selectedTicket.createdAt)}</strong>
                   </div>
                   <div>
-                    <span>Pembaruan terakhir</span>
+                    <span>Last updated</span>
                     <strong>{formatTime(selectedTicket.updatedAt)}</strong>
                   </div>
                   <div>
-                    <span>Sumber</span>
+                    <span>Source</span>
                     <strong>
                       {selectedTicket.source === "self-heal"
                         ? "Self-healing"
-                        : "Sistem"}
+                        : "System"}
                     </strong>
                   </div>
                 </section>
@@ -261,8 +266,8 @@ export default function IncidentDesk() {
                 <section className="ticketDetailSection">
                   <div className="detailSectionHeading">
                     <div>
-                      <p className="eyebrow">KOMUNIKASI</p>
-                      <h3>Pembaruan insiden</h3>
+                      <p className="eyebrow">COMMUNICATION</p>
+                      <h3>Incident updates</h3>
                     </div>
                     <span className="transactionCount">
                       {selectedTicket.messages.length}
@@ -276,12 +281,16 @@ export default function IncidentDesk() {
                             <strong>{MESSAGE_ROLE_LABELS[message.role]}</strong>
                             <time>{formatTime(message.createdAt)}</time>
                           </div>
-                          <p>{message.content}</p>
+                          <p>
+                            {message.role === "system"
+                              ? formatIncidentText(message.content)
+                              : message.content}
+                          </p>
                         </li>
                       ))}
                     </ol>
                   ) : (
-                    <p className="detailEmpty">Belum ada pembaruan.</p>
+                    <p className="detailEmpty">No updates yet.</p>
                   )}
                 </section>
 
@@ -289,7 +298,7 @@ export default function IncidentDesk() {
                   <div className="detailSectionHeading">
                     <div>
                       <p className="eyebrow">AUDIT TRAIL</p>
-                      <h3>Riwayat aktivitas</h3>
+                      <h3>Activity history</h3>
                     </div>
                     <span className="transactionCount">
                       {selectedTicket.transactions.length}
@@ -303,15 +312,15 @@ export default function IncidentDesk() {
                           <li key={transaction.id}>
                             <span className="timelineDot" />
                             <div>
-                              <strong>{transaction.label}</strong>
-                              <p>{transaction.detail}</p>
+                              <strong>{formatIncidentText(transaction.label)}</strong>
+                              <p>{formatIncidentText(transaction.detail)}</p>
                               <time>{formatTime(transaction.createdAt)}</time>
                             </div>
                           </li>
                         ))}
                     </ol>
                   ) : (
-                    <p className="detailEmpty">Belum ada aktivitas tercatat.</p>
+                    <p className="detailEmpty">No activity recorded yet.</p>
                   )}
                 </section>
 
@@ -320,7 +329,7 @@ export default function IncidentDesk() {
                     <div className="detailSectionHeading">
                       <div>
                         <p className="eyebrow">AUTOMATION</p>
-                        <h3>Job terkait</h3>
+                        <h3>Related jobs</h3>
                       </div>
                       <span className="transactionCount">
                         {selectedTicket.jobs.length}
@@ -331,9 +340,11 @@ export default function IncidentDesk() {
                         <li key={job.id}>
                           <div>
                             <strong>{job.id}</strong>
-                            <span>{job.progress}</span>
+                            <span>{formatAgentProgress(job.progress)}</span>
                           </div>
-                          <span className="statusBadge">{job.status}</span>
+                          <span className="statusBadge">
+                            {formatJobStatus(job.status)}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -346,11 +357,11 @@ export default function IncidentDesk() {
               <span className="emptyIncidentMark" aria-hidden="true">
                 —
               </span>
-              <h2>{loading ? "Memuat insiden" : "Pilih insiden"}</h2>
+              <h2>{loading ? "Loading incident" : "Select an incident"}</h2>
               <p>
                 {loading
-                  ? "Daftar tiket sedang diperbarui."
-                  : "Pilih tiket di sebelah kiri untuk melihat detail dan riwayatnya."}
+                  ? "The ticket list is updating."
+                  : "Select a ticket from the list to view its details and history."}
               </p>
             </div>
           )}

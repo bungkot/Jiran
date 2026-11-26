@@ -9,6 +9,7 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { formatAgentProgress } from "@/lib/displayText";
 import type {
   AgentJobSnapshot,
   AgentJobSummary,
@@ -30,12 +31,12 @@ interface StreamMessage {
 
 const ACTIVE_STATUSES = new Set(["queued", "running", "cancelling"]);
 const STATUS_LABELS: Record<string, string> = {
-  queued: "Antrean",
-  running: "Berjalan",
-  cancelling: "Menghentikan",
-  completed: "Selesai",
-  failed: "Gagal",
-  cancelled: "Dibatalkan",
+  queued: "Queued",
+  running: "In progress",
+  cancelling: "Stopping",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Canceled",
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,8 +81,8 @@ function encodeFilePath(path: string): string {
 function formatTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "Waktu tidak tersedia"
-    : new Intl.DateTimeFormat("id-ID", {
+    ? "Time unavailable"
+    : new Intl.DateTimeFormat("en-US", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(date);
@@ -137,7 +138,7 @@ export default function AgentPlayground() {
       const detail =
         isRecord(payload) && typeof payload.error === "string"
           ? payload.error
-          : `Gagal memuat riwayat (HTTP ${response.status}).`;
+          : `Failed to load job history (HTTP ${response.status}).`;
       throw new Error(detail);
     }
     if (
@@ -145,7 +146,7 @@ export default function AgentPlayground() {
       !Array.isArray(payload.jobs) ||
       !payload.jobs.every(isAgentJobSummary)
     ) {
-      throw new Error("Respons riwayat coding agent tidak valid.");
+      throw new Error("The agent history response is invalid.");
     }
     const jobs = payload.jobs;
     setHistory(jobs);
@@ -168,7 +169,7 @@ export default function AgentPlayground() {
           setError(
             reason instanceof Error
               ? reason.message
-              : "Riwayat coding agent gagal dimuat.",
+              : "Failed to load agent history.",
           );
         }
       } finally {
@@ -199,14 +200,14 @@ export default function AgentPlayground() {
           const detail =
             isRecord(payload) && typeof payload.error === "string"
               ? payload.error
-              : `Gagal memuat pekerjaan (HTTP ${response.status}).`;
+              : `Failed to load the task (HTTP ${response.status}).`;
           throw new Error(detail);
         }
         if (!active) return;
         const goal =
           payload.goal ||
           historyRef.current.find((item) => item.id === selectedJobId)?.goal ||
-          "Instruksi pekerjaan";
+          "Untitled task";
         const restoredMessages: ChatMessage[] = [
           {
             id: `goal-${payload.id}`,
@@ -236,7 +237,7 @@ export default function AgentPlayground() {
           setError(
             reason instanceof Error
               ? reason.message
-              : "Pekerjaan coding agent gagal dimuat.",
+              : "Failed to load the agent task.",
           );
         }
       } finally {
@@ -272,7 +273,7 @@ export default function AgentPlayground() {
     ): StreamMessage | null => {
       const payload = readStreamMessage(event);
       if (!payload) {
-        setError("Pembaruan dari coding agent tidak valid.");
+        setError("The agent update is invalid.");
         return null;
       }
       const messageId = `job-${jobId}-${payload.id}`;
@@ -284,7 +285,10 @@ export default function AgentPlayground() {
               {
                 id: messageId,
                 role,
-                content: payload.text,
+                content:
+                  role === "system"
+                    ? formatAgentProgress(payload.text)
+                    : payload.text,
                 jobId,
               },
             ],
@@ -301,7 +305,12 @@ export default function AgentPlayground() {
       const payload = appendMessage(event, "system");
       if (!payload) return;
       setJob((current) =>
-        current ? { ...current, progress: payload.text } : current,
+        current
+          ? {
+              ...current,
+              progress: formatAgentProgress(payload.text),
+            }
+          : current,
       );
     });
 
@@ -324,7 +333,7 @@ export default function AgentPlayground() {
               const detail =
                 isRecord(snapshot) && typeof snapshot.error === "string"
                   ? snapshot.error
-                  : `Gagal memuat file hasil (HTTP ${response.status}).`;
+                  : `Failed to load task files (HTTP ${response.status}).`;
               throw new Error(detail);
             }
             setMessages((current) =>
@@ -343,7 +352,7 @@ export default function AgentPlayground() {
             setError(
               reason instanceof Error
                 ? reason.message
-                : "File hasil coding agent belum dapat dimuat.",
+                : "Unable to load the agent's output files.",
             );
           });
       }
@@ -373,7 +382,7 @@ export default function AgentPlayground() {
         setError(
           reason instanceof Error
             ? reason.message
-            : "Riwayat coding agent gagal diperbarui.",
+            : "Failed to refresh agent history.",
         );
       });
     };
@@ -438,7 +447,7 @@ export default function AgentPlayground() {
         const detail =
           isRecord(payload) && typeof payload.error === "string"
             ? payload.error
-            : `Coding agent menolak pengujian (HTTP ${response.status}).`;
+            : `The coding agent rejected the task (HTTP ${response.status}).`;
         throw new Error(detail);
       }
       const acceptedId = payload.id;
@@ -448,7 +457,7 @@ export default function AgentPlayground() {
         id: acceptedId,
         status: acceptedStatus,
         goal: message,
-        progress: "Pekerjaan masuk antrean coding agent.",
+        progress: "Task queued for the coding agent.",
       });
       setHistory((current) => [
         {
@@ -463,14 +472,14 @@ export default function AgentPlayground() {
         setError(
           reason instanceof Error
             ? reason.message
-            : "Riwayat coding agent gagal diperbarui.",
+            : "Failed to refresh agent history.",
         );
       });
     } catch (reason) {
       const detail =
         reason instanceof Error
           ? reason.message
-          : "Pengujian gagal dikirim ke coding agent.";
+          : "Failed to send the task to the coding agent.";
       setError(detail);
       setMessages((current) => [
         ...current,
@@ -499,7 +508,7 @@ export default function AgentPlayground() {
         const detail =
           isRecord(payload) && typeof payload.error === "string"
             ? payload.error
-            : `Pekerjaan belum dapat dihentikan (HTTP ${response.status}).`;
+            : `Unable to stop the task (HTTP ${response.status}).`;
         throw new Error(detail);
       }
     } catch (reason) {
@@ -507,7 +516,7 @@ export default function AgentPlayground() {
       setError(
         reason instanceof Error
           ? reason.message
-          : "Pekerjaan coding agent belum dapat dihentikan.",
+          : "Unable to stop the agent task.",
       );
     }
   }
@@ -515,19 +524,19 @@ export default function AgentPlayground() {
   return (
     <>
       <h1 className="visuallyHidden">Coding agent</h1>
-      <section className="agentWorkspace" aria-label="Ruang kerja coding agent">
+      <section className="agentWorkspace" aria-label="Coding agent workspace">
         <aside className="agentHistorySidebar">
           <div className="agentHistoryHeading">
             <div>
               <p className="eyebrow">CODING AGENT</p>
-              <h2>Riwayat</h2>
+              <h2>History</h2>
             </div>
             <button
-              aria-label="Instruksi baru"
+              aria-label="New task"
               className="button agentNewJobIconButton"
               disabled={hasActiveJob}
               onClick={startNewJob}
-              title="Instruksi baru"
+              title="New task"
               type="button"
             >
               <svg
@@ -546,12 +555,12 @@ export default function AgentPlayground() {
               </svg>
             </button>
           </div>
-          <div className="agentHistoryList" aria-label="Riwayat pekerjaan">
+          <div className="agentHistoryList" aria-label="Agent history">
             {loadingHistory && history.length === 0 ? (
-              <p className="emptyHint">Memuat riwayat...</p>
+              <p className="emptyHint">Loading history...</p>
             ) : history.length === 0 ? (
               <div className="emptyIncident agentHistoryEmpty">
-                <strong>Belum ada riwayat</strong>
+                <strong>No history yet</strong>
               </div>
             ) : (
               history.map((item) => (
@@ -579,13 +588,13 @@ export default function AgentPlayground() {
             <span className={`statusDot${hasActiveJob ? "" : " agentIdleDot"}`} />
             <span>
               {hasActiveJob
-                ? "Satu pekerjaan sedang diproses"
-                : "Pekerjaan tersimpan di riwayat"}
+                ? "One task is in progress"
+                : "Tasks are saved in history"}
             </span>
           </div>
         </aside>
 
-        <section className="agentPlayground" aria-label="Chat dengan coding agent">
+        <section className="agentPlayground" aria-label="Chat with the coding agent">
           <header className="playgroundHeader">
             <div>
               <h2>Coding agent</h2>
@@ -593,15 +602,15 @@ export default function AgentPlayground() {
                 {job
                   ? `Job ${job.id}`
                   : selectedJobId
-                    ? "Memuat pekerjaan..."
-                    : "Pekerjaan baru"}
+                    ? "Loading task..."
+                    : "New task"}
               </p>
             </div>
             <span className="agentPill">1 AGENT</span>
           </header>
 
           <div className="playgroundMessages" aria-live="polite">
-            {loadingJob ? <p className="emptyHint">Memuat percakapan...</p> : null}
+            {loadingJob ? <p className="emptyHint">Loading conversation...</p> : null}
             {messages.map((message) => {
               const downloadJobId = message.jobId
                 ? encodeURIComponent(message.jobId)
@@ -619,7 +628,7 @@ export default function AgentPlayground() {
                   {downloadJobId && message.files && message.files.length > 0 ? (
                     <section
                       className="assistantFiles"
-                      aria-label="File hasil proyek"
+                      aria-label="Project files"
                     >
                       <div className="assistantFilesHeader">
                         <div className="assistantFilesTitleGroup">
@@ -627,12 +636,12 @@ export default function AgentPlayground() {
                             className="assistantZipButton"
                             download
                             href={`/api/agent-tests/${downloadJobId}/files.zip`}
-                            title="Unduh seluruh proyek sebagai ZIP"
+                            title="Download the entire project as a ZIP file"
                           >
                             ZIP
                           </a>
                           <div>
-                            <strong>File hasil</strong>
+                            <strong>Output files</strong>
                             {message.project ? (
                               <span className="assistantProjectPath">
                                 {message.project}
@@ -641,7 +650,8 @@ export default function AgentPlayground() {
                           </div>
                         </div>
                         <span className="assistantFileCount">
-                          {message.files.length} file
+                          {message.files.length}{" "}
+                          {message.files.length === 1 ? "file" : "files"}
                         </span>
                       </div>
                       <ul>
@@ -655,7 +665,7 @@ export default function AgentPlayground() {
                                 className="assistantFileLink"
                                 download
                                 href={`/api/agent-tests/${downloadJobId}/files/${encodeFilePath(file)}`}
-                                title={`Unduh ${file}`}
+                                title={`Download ${file}`}
                               >
                                 <span className="assistantFileType">
                                   {extension}
@@ -676,8 +686,10 @@ export default function AgentPlayground() {
                 <span className="statusDot" />
                 <span>
                   {streamStatus === "reconnecting"
-                    ? "Koneksi terputus; mencoba menyambung ulang..."
-                    : job?.progress || "Coding agent sedang bekerja."}
+                    ? "Connection lost; reconnecting..."
+                    : formatAgentProgress(
+                        job?.progress || "The coding agent is working.",
+                      )}
                 </span>
               </div>
             ) : null}
@@ -692,21 +704,21 @@ export default function AgentPlayground() {
 
           <form className="chatComposer" onSubmit={sendMessage}>
             <label className="visuallyHidden" htmlFor="agent-test-message">
-              Instruksi untuk coding agent
+              Task instructions for the coding agent
             </label>
             <textarea
               id="agent-test-message"
               maxLength={300}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Contoh: Perbaiki validasi input pada form login..."
+              placeholder="Describe a task for the coding agent..."
               rows={1}
               value={draft}
             />
             <div className="composerFooter">
               <span>
                 {hasActiveJob
-                  ? "Tunggu pekerjaan aktif selesai sebelum mengirim instruksi baru."
-                  : "Maksimal 300 karakter"}
+                  ? "Wait for the current task to finish before sending another."
+                  : "Maximum 300 characters"}
               </span>
               {jobIsActive ? (
                 <button
@@ -716,8 +728,8 @@ export default function AgentPlayground() {
                   type="button"
                 >
                   {stopping || jobStatus === "cancelling"
-                    ? "Menghentikan..."
-                    : "Berhenti"}
+                    ? "Stopping..."
+                    : "Stop"}
                 </button>
               ) : (
                 <button
@@ -727,7 +739,7 @@ export default function AgentPlayground() {
                   }
                   type="submit"
                 >
-                  {sending ? "Mengirim..." : "Kirim instruksi"}
+                  {sending ? "Sending..." : "Send task"}
                 </button>
               )}
             </div>

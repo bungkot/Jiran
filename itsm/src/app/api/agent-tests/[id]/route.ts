@@ -14,9 +14,9 @@ export async function GET(
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
-    console.error(`ITSM gagal membaca status pengujian ${id}`, error);
+    console.error(`ITSM failed to read task status ${id}`, error);
     return Response.json(
-      { error: "Status pengujian coding agent belum dapat diperbarui." },
+      { error: "Unable to retrieve the coding-agent task status." },
       { status: 502 },
     );
   }
@@ -33,9 +33,9 @@ export async function DELETE(
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
-    console.error(`ITSM gagal menghentikan pengujian ${id}`, error);
+    console.error(`ITSM failed to stop task ${id}`, error);
     return Response.json(
-      { error: "Pengujian coding agent belum dapat dihentikan." },
+      { error: "Unable to stop the coding-agent task." },
       { status: 502 },
     );
   }

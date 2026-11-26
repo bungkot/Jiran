@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q");
   if (!q) {
     return Response.json(
-      { error: "parameter 'q' (PromQL) wajib diisi" },
+      { error: "The 'q' (PromQL) parameter is required." },
       { status: 400 },
     );
   }

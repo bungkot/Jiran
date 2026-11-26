@@ -10,7 +10,7 @@ export async function GET(
   const { id } = await context.params;
   const ticket = await getTicket(id);
   if (!ticket) {
-    return Response.json({ error: "Tiket tidak ditemukan." }, { status: 404 });
+    return Response.json({ error: "Ticket not found." }, { status: 404 });
   }
   return Response.json(ticket, {
     headers: { "Cache-Control": "no-store" },

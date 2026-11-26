@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/agent", label: "Agent" },
-  { href: "/", label: "Tiket" },
+  { href: "/", label: "Tickets" },
   { href: "/monitoring", label: "Monitoring" },
 ];
 
@@ -13,7 +13,7 @@ export default function PrimaryNavigation() {
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Navigasi utama">
+    <nav aria-label="Primary navigation">
       {links.map(({ href, label }) => {
         const active =
           pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));

@@ -6,12 +6,12 @@ import { PROMETHEUS_URL } from "@/lib/prometheus";
 
 export const metadata = {
   title: "JIRAN CODING — LLM-Assisted Development",
-  description: "Workspace pengembangan berbantuan LLM dengan ITSM self-healing.",
+  description: "LLM-assisted development workspace with self-healing ITSM.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="id">
+    <html lang="en">
       <body>
         <header className="appHeader">
           <Link className="brand" href="/">

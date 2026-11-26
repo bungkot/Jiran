@@ -15,9 +15,9 @@ export async function GET(
     const upstream = await fetchAgentJobArchive(id);
     return proxyAgentDownload(upstream);
   } catch (error) {
-    console.error(`ITSM gagal mengunduh arsip proyek ${id}`, error);
+    console.error(`ITSM failed to download project archive ${id}`, error);
     return Response.json(
-      { error: "Arsip proyek belum dapat diunduh." },
+      { error: "Unable to download the project archive." },
       { status: 502 },
     );
   }

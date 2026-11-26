@@ -16,14 +16,14 @@ export async function GET(
     );
     if (!upstream.ok || !upstream.body) {
       console.error(
-        `ITSM gagal membuka stream job ${id}: HTTP ${upstream.status}`,
+        `ITSM failed to open the task stream ${id}: HTTP ${upstream.status}`,
       );
       return Response.json(
         {
           error:
             upstream.status === 404
-              ? "Job coding agent tidak ditemukan."
-              : "Stream coding agent tidak tersedia.",
+              ? "Coding-agent task not found."
+              : "Coding-agent stream is unavailable.",
         },
         { status: upstream.status === 404 ? 404 : 502 },
       );
@@ -37,9 +37,9 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error(`ITSM gagal membuka stream job ${id}`, error);
+    console.error(`ITSM failed to open task stream ${id}`, error);
     return Response.json(
-      { error: "Koneksi ke stream coding agent gagal." },
+      { error: "Unable to connect to the coding-agent stream." },
       { status: 502 },
     );
   }

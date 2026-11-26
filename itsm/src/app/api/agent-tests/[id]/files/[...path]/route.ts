@@ -15,9 +15,9 @@ export async function GET(
     const upstream = await fetchAgentJobFile(id, path.join("/"));
     return proxyAgentDownload(upstream);
   } catch (error) {
-    console.error(`ITSM gagal mengunduh file proyek ${id}`, error);
+    console.error(`ITSM failed to download project file ${id}`, error);
     return Response.json(
-      { error: "File proyek belum dapat diunduh." },
+      { error: "Unable to download the project file." },
       { status: 502 },
     );
   }

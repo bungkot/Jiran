@@ -27,22 +27,22 @@ function isSeverity(value: unknown): value is TicketSeverity {
 export async function POST(request: Request) {
   if (!process.env.ITSM_SYSTEM_TOKEN) {
     return Response.json(
-      { error: "Token integrasi self-healing belum dikonfigurasi." },
+      { error: "The self-healing integration token is not configured." },
       { status: 503 },
     );
   }
   if (!isAuthorized(request)) {
-    return Response.json({ error: "Tidak diizinkan." }, { status: 401 });
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
   let payload: unknown;
   try {
     payload = await request.json();
   } catch {
-    return Response.json({ error: "Body harus berupa JSON." }, { status: 400 });
+    return Response.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
   if (typeof payload !== "object" || payload === null) {
-    return Response.json({ error: "Data insiden tidak valid." }, { status: 400 });
+    return Response.json({ error: "Incident data is invalid." }, { status: 400 });
   }
   const severity = "severity" in payload ? payload.severity : undefined;
   if (
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     typeof payload.active !== "boolean" ||
     (severity !== undefined && !isSeverity(severity))
   ) {
-    return Response.json({ error: "Data insiden tidak valid." }, { status: 400 });
+    return Response.json({ error: "Incident data is invalid." }, { status: 400 });
   }
 
   try {
@@ -72,9 +72,9 @@ export async function POST(request: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    console.error("ITSM gagal menyinkronkan insiden self-healing", error);
+    console.error("ITSM failed to sync a self-healing incident", error);
     return Response.json(
-      { error: "Insiden self-healing gagal disimpan." },
+      { error: "Failed to save the self-healing incident." },
       { status: 500 },
     );
   }

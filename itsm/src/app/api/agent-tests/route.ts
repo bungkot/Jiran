@@ -13,9 +13,9 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    console.error("ITSM gagal memuat riwayat coding agent", error);
+    console.error("ITSM failed to load coding-agent history", error);
     return Response.json(
-      { error: "Riwayat coding agent belum dapat dimuat." },
+      { error: "Unable to load coding-agent history." },
       { status: 502 },
     );
   }
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   try {
     payload = await request.json();
   } catch {
-    return Response.json({ error: "Body harus berupa JSON." }, { status: 400 });
+    return Response.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
   const message =
     typeof payload === "object" &&
@@ -36,11 +36,11 @@ export async function POST(request: Request) {
       ? payload.message.trim()
       : "";
   if (!message) {
-    return Response.json({ error: "Instruksi pengujian wajib diisi." }, { status: 400 });
+    return Response.json({ error: "Task instructions are required." }, { status: 400 });
   }
   if (message.length > MAX_MESSAGE_LENGTH) {
     return Response.json(
-      { error: `Instruksi maksimal ${MAX_MESSAGE_LENGTH} karakter.` },
+      { error: `Task instructions must be ${MAX_MESSAGE_LENGTH} characters or fewer.` },
       { status: 413 },
     );
   }
@@ -49,9 +49,9 @@ export async function POST(request: Request) {
     const job = await submitAgentGoal(message);
     return Response.json(job, { status: 202 });
   } catch (error) {
-    console.error("ITSM gagal mengirim pengujian ke coding agent", error);
+    console.error("ITSM failed to submit a task to the coding agent", error);
     return Response.json(
-      { error: "Coding agent tidak dapat menerima pengujian." },
+      { error: "The coding agent could not accept the task." },
       { status: 502 },
     );
   }

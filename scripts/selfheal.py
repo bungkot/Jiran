@@ -345,15 +345,15 @@ def run_once(
     for item in state:
         active = item["status"] == "down"
         detail = (
-            f"Self-healing mendeteksi service {item['name']} tidak sehat."
+            f"Self-healing detected that service {item['name']} is unhealthy."
             if active
-            else f"Service {item['name']} kembali sehat."
+            else f"Service {item['name']} has recovered."
         )
         report_incident(
             itsm_url,
             itsm_token,
             f"service:{item['name']}",
-            f"Service {item['name']} down",
+            f"Service {item['name']} is down",
             detail,
             active,
             severity="high",
@@ -365,13 +365,15 @@ def run_once(
             continue
         threshold = RESOURCE_THRESHOLDS[key]
         active = value > threshold
-        state_text = "melewati ambang kritis" if active else "kembali normal"
+        state_text = (
+            "above the critical threshold" if active else "back to normal"
+        )
         report_incident(
             itsm_url,
             itsm_token,
             f"resource:{key}",
-            f"Resource {key} kritis",
-            f"{key}={value:.1f}% ({state_text}; ambang {threshold:.1f}%).",
+            f"Critical resource: {key}",
+            f"{key}={value:.1f}% ({state_text}; threshold {threshold:.1f}%).",
             active,
             severity="medium",
         )

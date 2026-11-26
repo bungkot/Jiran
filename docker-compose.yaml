@@ -94,12 +94,16 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
       SELFHEAL_INTERVAL: "60"
+      SELFHEAL_ITSM_URL: http://itsm:3000
+      ITSM_SYSTEM_TOKEN: ${ITSM_SYSTEM_TOKEN:-${AGENT_API_TOKEN}}
       SELFHEAL_WATCH: "agent-1,ollama"
       SELFHEAL_PROMETHEUS_URL: "http://prometheus:9090"
       SELFHEAL_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-jiran}
     depends_on:
       ollama:
         condition: service_healthy
+      itsm:
+        condition: service_started
     mem_limit: 256m
     restart: unless-stopped
 
@@ -169,6 +173,37 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  itsm:
+    build:
+      context: ./itsm
+    image: jiran-itsm:local
+    depends_on:
+      agent-1:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${ITSM_PORT:-3000}:3000"
+    environment:
+      AGENT_SERVICE_URL: http://agent-1:8765
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:?AGENT_API_TOKEN wajib diisi, min. 32 karakter}
+      ITSM_SYSTEM_TOKEN: ${ITSM_SYSTEM_TOKEN:-${AGENT_API_TOKEN}}
+      ITSM_DATA_DIR: /data/itsm
+      PROMETHEUS_URL: http://prometheus:9090
+    volumes:
+      - itsm_data:/data/itsm
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   agent-2:
@@ -380,7 +415,7 @@ services:
       prometheus:
         condition: service_started
     ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
@@ -395,6 +430,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  itsm_data:
   prometheus_data:
   grafana_data:
 

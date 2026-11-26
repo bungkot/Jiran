@@ -140,6 +140,54 @@ def poll_state(
     return state
 
 
+def report_incident(
+    itsm_url: str,
+    token: str,
+    fingerprint: str,
+    title: str,
+    detail: str,
+    active: bool,
+    timeout_s: float = 5.0,
+) -> bool:
+    if not itsm_url or not token:
+        print("[self-heal] ITSM incident reporting belum dikonfigurasi.", flush=True)
+        return False
+    payload = json.dumps(
+        {
+            "fingerprint": fingerprint,
+            "title": title,
+            "detail": detail,
+            "active": active,
+        }
+    ).encode()
+    request = urllib.request.Request(
+        _http_url(itsm_url.rstrip("/") + "/api/system/incidents"),
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:  # noqa: S310
+            if not 200 <= response.status < 300:
+                print(
+                    f"[self-heal] ITSM menolak update insiden {fingerprint}: "
+                    f"HTTP {response.status}",
+                    flush=True,
+                )
+                return False
+        return True
+    except (OSError, ValueError) as error:
+        print(
+            f"[self-heal] gagal mengirim insiden {fingerprint} ke ITSM: "
+            f"{type(error).__name__}: {error}",
+            flush=True,
+        )
+        return False
+
+
 def find_container_name(sock_path: str, service: str, project: str = COMPOSE_PROJECT) -> str | None:
     """Cari container dari service dan project Compose yang diminta."""
     try:
@@ -287,10 +335,42 @@ def run_once(
     *,
     project=COMPOSE_PROJECT,
     dry_run=False,
+    itsm_url="",
+    itsm_token="",
 ) -> None:
     state = poll_state(watch)
     by_name = {item["name"]: item for item in state}
+    for item in state:
+        active = item["status"] == "down"
+        detail = (
+            f"Self-healing mendeteksi service {item['name']} tidak sehat."
+            if active
+            else f"Service {item['name']} kembali sehat."
+        )
+        report_incident(
+            itsm_url,
+            itsm_token,
+            f"service:{item['name']}",
+            f"Service {item['name']} down",
+            detail,
+            active,
+        )
+
     resources = poll_resources(prometheus_url)
+    for key, value in resources.items():
+        if value is None:
+            continue
+        threshold = RESOURCE_THRESHOLDS[key]
+        active = value > threshold
+        state_text = "melewati ambang kritis" if active else "kembali normal"
+        report_incident(
+            itsm_url,
+            itsm_token,
+            f"resource:{key}",
+            f"Resource {key} kritis",
+            f"{key}={value:.1f}% ({state_text}; ambang {threshold:.1f}%).",
+            active,
+        )
     print(
         f"[{time.strftime('%H:%M:%S')}] resources: {resource_summary(resources)}",
         flush=True,
@@ -359,11 +439,13 @@ def main(argv: list[str] | None = None) -> int:
     model = os.environ.get("OLLAMA_MODEL", "qwen3.5:2b-q4_K_M")
     sock_path = SOCKET
     prometheus_url = os.environ.get("SELFHEAL_PROMETHEUS_URL", "http://prometheus:9090").rstrip("/")
+    itsm_url = os.environ.get("SELFHEAL_ITSM_URL", "http://itsm:3000").rstrip("/")
+    itsm_token = os.environ.get("ITSM_SYSTEM_TOKEN", "")
     dry_run = os.environ.get("SELFHEAL_DRY_RUN", "").lower() in {"1", "true", "yes"}
     print(
         f"[selfheal] mulai, interval={args.interval}s model={model} "
         f"watch={DEFAULT_WATCH} (jiran-agent prio-1, ollama prio-2, resources prio-3) "
-        f"prom={prometheus_url} sock={sock_path} dry_run={dry_run}",
+        f"prom={prometheus_url} itsm={itsm_url} sock={sock_path} dry_run={dry_run}",
         flush=True,
     )
     while True:
@@ -376,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
                 prometheus_url,
                 project=COMPOSE_PROJECT,
                 dry_run=dry_run,
+                itsm_url=itsm_url,
+                itsm_token=itsm_token,
             )
         except Exception as exc:  # noqa: BLE001 - watchdog harus tetap hidup
             print(f"[selfheal] error siklus: {type(exc).__name__}: {exc}", flush=True)

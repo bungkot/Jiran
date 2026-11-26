@@ -1,84 +1,854 @@
 :root {
-  --bg: #0f1115;
-  --panel: #161a21;
-  --text: #e6e6e6;
-  --muted: #9aa3b2;
-  --accent: #5fd0a8;
-  --red: #e5534b;
-  --line: #232a36;
+  color-scheme: dark;
+  --bg: #0b1118;
+  --panel: #111b26;
+  --panel-raised: #152231;
+  --line: #253648;
+  --text: #e8f0f7;
+  --muted: #91a4b8;
+  --accent: #52d3b0;
+  --blue: #70a9ff;
+  --red: #ff7777;
+  --amber: #f0bf67;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 70% -20%, rgba(39, 93, 112, 0.2), transparent 40%),
+    var(--bg);
+  color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: var(--bg);
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+.appHeader {
+  min-height: 76px;
+  padding: 12px clamp(18px, 4vw, 56px);
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(11, 17, 24, 0.88);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.brandMark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #071b1a;
+  font-weight: 800;
+}
+
+.brand strong,
+.brand small {
+  display: block;
+}
+
+.brand strong {
+  font-size: 13px;
+  letter-spacing: 0.09em;
+}
+
+.brand small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.appHeader nav {
+  display: flex;
+  align-self: stretch;
+  gap: 24px;
+}
+
+.appHeader nav a {
+  display: flex;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.appHeader nav a:hover,
+.appHeader nav a:focus-visible {
+  border-color: var(--accent);
   color: var(--text);
 }
 
-header {
-  padding: 28px 32px 12px;
+.localOnlyBadge,
+.environmentBadge,
+.agentPill {
+  border: 1px solid rgba(82, 211, 176, 0.35);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
 }
 
-header h1 {
-  margin: 0 0 4px;
-  font-size: 28px;
-  font-weight: 600;
+.localOnlyBadge {
+  margin-left: auto;
+  padding: 7px 10px;
 }
 
-header p {
+.mainContent {
+  width: min(1540px, 100%);
+  min-height: calc(100vh - 132px);
+  margin: 0 auto;
+  padding: 28px clamp(16px, 4vw, 56px) 40px;
+}
+
+.appFooter {
+  padding: 16px;
+  border-top: 1px solid var(--line);
+  color: #64788b;
+  font-size: 11px;
+  text-align: center;
+}
+
+.pageIntro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.pageIntro h1,
+.newTicketPanel h2 {
+  margin: 3px 0 7px;
+  font-size: clamp(24px, 3vw, 34px);
+  letter-spacing: -0.035em;
+}
+
+.pageIntro p:not(.eyebrow),
+.newTicketPanel > p:not(.eyebrow) {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
-main {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 32px 40px;
+.eyebrow {
+  margin: 0;
+  color: #7d94a9;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
 }
 
-h2 {
-  font-size: 18px;
-  margin: 24px 0 12px;
+.environmentBadge {
+  padding: 8px 11px;
+  white-space: nowrap;
+}
+
+.ticketWorkspace {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  min-height: 690px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(17, 27, 38, 0.88);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.2);
+}
+
+.ticketSidebar {
+  display: flex;
+  min-height: 690px;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: rgba(14, 23, 33, 0.8);
+}
+
+.sidebarHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 18px 10px;
+}
+
+.sidebarHeading h2 {
+  margin: 5px 0 0;
+  font-size: 16px;
+}
+
+.sidebarDescription {
+  margin: 0;
+  padding: 0 18px 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.button {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-raised);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  filter: brightness(1.14);
+  transform: translateY(-1px);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.buttonPrimary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #06201b;
+}
+
+.buttonCompact {
+  min-height: 32px;
+  padding: 0 11px;
+  white-space: nowrap;
+}
+
+.ticketList {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+  overflow-y: auto;
+  padding: 0 10px 18px;
+}
+
+.emptyHint {
+  padding: 16px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ticketListItem {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ticketListItem:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.ticketListItem.selected {
+  border-color: rgba(82, 211, 176, 0.3);
+  background: rgba(82, 211, 176, 0.075);
+}
+
+.ticketItemTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.ticketListItem > strong {
+  overflow: hidden;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
 }
 
-.grid {
+.ticketItemDate {
+  color: #71859a;
+  font-size: 10px;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-open {
+  border-color: rgba(112, 169, 255, 0.35);
+  color: var(--blue);
+}
+
+.status-in_progress {
+  border-color: rgba(240, 191, 103, 0.35);
+  color: var(--amber);
+}
+
+.status-resolved {
+  border-color: rgba(82, 211, 176, 0.35);
+  color: var(--accent);
+}
+
+.status-failed {
+  border-color: rgba(255, 119, 119, 0.35);
+  color: var(--red);
+}
+
+.agentQueueNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.statusDot,
+.timelineDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(82, 211, 176, 0.42);
+}
+
+.dotFailed {
+  background: var(--red);
+  box-shadow: 0 0 10px rgba(255, 119, 119, 0.35);
+}
+
+.ticketMain {
+  min-width: 0;
+  padding: 22px;
+}
+
+.errorBanner {
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 119, 119, 0.3);
+  border-radius: 9px;
+  background: rgba(255, 119, 119, 0.08);
+  color: #ffaaaa;
+  font-size: 12px;
+}
+
+.ticketHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ticketHeader h2 {
+  margin: 5px 0 6px;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
+.ticketMeta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ticketHeader > .statusBadge {
+  margin-top: 4px;
+}
+
+.ticketDetailGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(230px, 0.85fr);
+  gap: 16px;
+  padding-top: 18px;
+}
+
+.conversationPanel,
+.transactionPanel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(11, 18, 26, 0.62);
+}
+
+.conversationPanel {
+  display: flex;
+  min-height: 520px;
+  flex-direction: column;
+}
+
+.panelHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panelHeading h3 {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.agentPill {
+  padding: 5px 8px;
+  font-size: 9px;
+}
+
+.conversation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.chatMessage {
+  max-width: 92%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+}
+
+.message-user {
+  align-self: flex-start;
+  border-color: rgba(112, 169, 255, 0.2);
+  background: rgba(112, 169, 255, 0.08);
+}
+
+.message-agent {
+  align-self: flex-end;
+  border-color: rgba(82, 211, 176, 0.18);
+  background: rgba(82, 211, 176, 0.055);
+}
+
+.message-system {
+  align-self: flex-end;
+  border-color: rgba(82, 211, 176, 0.24);
+  background: rgba(82, 211, 176, 0.07);
+}
+
+.message-agent .messageMeta,
+.message-system .messageMeta {
+  justify-content: flex-end;
+}
+
+.message-agent p,
+.message-system p {
+  text-align: right;
+}
+
+.messageMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.messageMeta strong {
+  color: var(--text);
+}
+
+.messageMeta time,
+.transactionList time {
+  color: #72879b;
+  font-size: 9px;
+}
+
+.chatMessage p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.runningNotice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  align-self: flex-start;
+  color: var(--amber);
+  font-size: 11px;
+}
+
+.chatComposer {
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.chatComposer textarea {
+  display: block;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  max-height: 180px;
+  resize: none;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: none;
+  padding: 11px;
+  background: #0c141d;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chatComposer textarea:focus {
+  height: 118px;
+  border-color: rgba(82, 211, 176, 0.6);
+  box-shadow: 0 0 0 3px rgba(82, 211, 176, 0.08);
+  transition: height 160ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.composerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.composerFooter span {
+  color: #72879b;
+  font-size: 10px;
+}
+
+.transactionPanel {
+  padding-bottom: 14px;
+}
+
+.transactionCount {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--panel-raised);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.transactionList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 6px 15px;
+  list-style: none;
+}
+
+.transactionList li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 9px;
+  padding: 11px 0;
+}
+
+.transactionList li:not(:last-child)::after {
+  position: absolute;
+  top: 21px;
+  bottom: -7px;
+  left: 3px;
+  width: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.timelineDot {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  background: var(--blue);
+  box-shadow: none;
+}
+
+.transactionList strong {
+  display: block;
+  font-size: 11px;
+}
+
+.transactionList p {
+  margin: 5px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.transactionList time {
+  display: block;
+}
+
+.jobReferences {
+  margin: 8px 15px 0;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.jobReferences h4 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.jobReference {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 10px;
+}
+
+.jobReference .statusDot {
+  margin-top: 4px;
+}
+
+.jobReference strong,
+.jobReference small {
+  display: block;
+}
+
+.jobReference strong {
+  font-size: 10px;
+}
+
+.jobReference small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.newTicketPanel {
+  width: min(680px, 100%);
+  margin: clamp(30px, 9vh, 100px) auto;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(11, 18, 26, 0.62);
+}
+
+.newTicketPanel h2 {
+  margin-top: 7px;
+}
+
+.newTicketComposer {
+  margin-top: 22px;
+  padding: 0;
+  border: 0;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.monitoringPage h1,
+.monitoringPage h2 {
+  margin: 20px 0 12px;
+}
+
+.nodeMetricsSection {
+  margin: 18px 0 34px;
+  padding: clamp(18px, 2.4vw, 28px);
+  border: 1px solid rgba(82, 211, 176, 0.18);
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(39, 93, 112, 0.2), transparent 42%),
+    linear-gradient(145deg, rgba(17, 27, 38, 0.96), rgba(12, 20, 29, 0.96));
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.18);
+}
+
+.monitoringSectionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.monitoringSectionHeading h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  letter-spacing: -0.025em;
+}
+
+.monitoringSectionDescription {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.monitoringSourceBadge {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(82, 211, 176, 0.24);
+  border-radius: 999px;
+  background: rgba(82, 211, 176, 0.07);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.nodeMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.nodeMetricGrid .card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 160px;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 20px;
+  border-color: rgba(112, 169, 255, 0.15);
+  background: linear-gradient(145deg, rgba(21, 34, 49, 0.94), rgba(14, 23, 33, 0.98));
+}
+
+.nodeMetricGrid .card::before {
+  position: absolute;
+  top: 0;
+  left: 20px;
+  width: 42px;
+  height: 2px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+  content: "";
+}
+
+.nodeMetricGrid .card::after {
+  position: absolute;
+  top: -72px;
+  right: -72px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(82, 211, 176, 0.08), transparent 70%);
+  content: "";
+  pointer-events: none;
+}
+
+.nodeMetricGrid .card h3 {
+  margin-bottom: 18px;
+  color: #a9bdcf;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.nodeMetricGrid .big {
+  font-size: clamp(29px, 3vw, 36px);
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.nodeMetricGrid .sub {
+  margin-top: auto;
+  padding-top: 13px;
+  font-size: 11px;
+}
+
+.monitoringError {
+  padding: 16px;
+  border: 1px solid rgba(240, 191, 103, 0.3);
+  border-radius: 10px;
+  background: rgba(240, 191, 103, 0.07);
+  color: #f3d9a8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.monitoringGrid {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
 }
 
 .card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 18px;
   min-width: 200px;
   flex: 1 1 220px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
 }
 
 .card h3 {
   margin: 0 0 10px;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--muted);
-}
-
-.card p {
-  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .big {
+  margin: 0;
   font-size: 26px;
   font-weight: 600;
 }
 
 .sub {
+  margin-top: 6px;
   color: var(--muted);
   font-size: 12px;
-  margin-top: 6px;
 }
 
 .row {
@@ -96,26 +866,26 @@ h2 {
 }
 
 .badge.up {
-  background: rgba(95, 208, 168, 0.16);
+  background: rgba(82, 211, 176, 0.16);
   color: var(--accent);
 }
 
 .badge.down {
-  background: rgba(229, 83, 75, 0.16);
+  background: rgba(255, 119, 119, 0.16);
   color: var(--red);
 }
 
 table {
-  border-collapse: collapse;
   width: 100%;
+  border-collapse: collapse;
 }
 
 th,
 td {
-  text-align: left;
   padding: 10px;
   border-bottom: 1px solid var(--line);
   font-size: 14px;
+  text-align: left;
 }
 
 th {
@@ -123,9 +893,396 @@ th {
   font-weight: 600;
 }
 
-footer {
+@media (max-width: 980px) {
+  .ticketDetailGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nodeMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ticketWorkspace,
+  .ticketSidebar {
+    min-height: 610px;
+  }
+
+  .transactionPanel {
+    order: 2;
+  }
+}
+
+@media (max-width: 680px) {
+  .appHeader {
+    gap: 18px;
+    padding: 10px 14px;
+  }
+
+  .appHeader nav {
+    gap: 14px;
+  }
+
+  .appHeader nav a {
+    font-size: 11px;
+  }
+
+  .localOnlyBadge {
+    display: none;
+  }
+
+  .mainContent {
+    padding: 20px 12px 28px;
+  }
+
+  .pageIntro {
+    align-items: flex-start;
+  }
+
+  .pageIntro > div > p:not(.eyebrow) {
+    max-width: 260px;
+    line-height: 1.5;
+  }
+
+  .ticketWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ticketSidebar {
+    min-height: 0;
+    max-height: 270px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .ticketList {
+    max-height: 145px;
+  }
+
+  .agentQueueNote {
+    display: none;
+  }
+
+  .ticketMain {
+    padding: 14px;
+  }
+
+  .ticketHeader {
+    flex-direction: column;
+  }
+
+  .ticketHeader h2 {
+    font-size: 16px;
+  }
+
+  .newTicketPanel {
+    margin: 24px auto;
+    padding: 18px;
+  }
+
+  .composerFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nodeMetricsSection {
+    padding: 16px;
+  }
+
+  .nodeMetricGrid {
+    gap: 10px;
+  }
+
+  .nodeMetricGrid .card {
+    min-height: 145px;
+    padding: 16px;
+  }
+
+  .monitoringSectionHeading {
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .nodeMetricGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.appHeader nav a.activeNavLink {
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.ticketWorkspace {
+  height: min(720px, calc(100vh - 190px));
+  min-height: 560px;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+}
+
+.ticketSidebar {
+  min-height: 0;
+}
+
+.incidentCount {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-raised);
   color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.incidentItem {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+}
+
+.incidentItem[open] {
+  border-color: rgba(82, 211, 176, 0.18);
+  background: rgba(82, 211, 176, 0.035);
+}
+
+.incidentSummary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 30px 12px 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.incidentSummary::-webkit-details-marker {
+  display: none;
+}
+
+.incidentSummary::after {
+  position: absolute;
+  top: 20px;
+  right: 13px;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  border-right: 1px solid var(--muted);
+  border-bottom: 1px solid var(--muted);
+  content: "";
+  transition: transform 140ms ease;
+}
+
+.incidentItem[open] .incidentSummary::after {
+  transform: rotate(225deg);
+}
+
+.incidentMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.incidentSummary > strong {
   font-size: 12px;
-  text-align: center;
-  padding: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.incidentDetails {
+  padding: 0 12px 12px;
+  border-top: 1px solid rgba(37, 54, 72, 0.7);
+}
+
+.incidentLastMessage {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.incidentTimeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.incidentTimeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.incidentTimeline li:not(:last-child)::after {
+  position: absolute;
+  top: 18px;
+  bottom: -5px;
+  left: 3px;
+  width: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.incidentTimeline strong {
+  display: block;
+  font-size: 10px;
+}
+
+.incidentTimeline p {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.incidentTimeline time {
+  color: #72879b;
+  font-size: 9px;
+}
+
+.emptyIncident {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 16px 10px;
+}
+
+.emptyIncidentMark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+}
+
+.emptyIncident strong {
+  font-size: 12px;
+}
+
+.emptyIncident p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.incidentError {
+  margin: 0 10px 10px;
+}
+
+.agentPlayground {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse at 100% 0, rgba(39, 93, 112, 0.1), transparent 36%),
+    rgba(17, 27, 38, 0.58);
+}
+
+.playgroundHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.playgroundHeader h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.playgroundHeader p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.playgroundMessages {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 22px;
+}
+
+.playgroundMessages .chatMessage {
+  max-width: min(720px, 92%);
+  padding: 10px 13px;
+}
+
+.playgroundMessages .chatMessage p {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.playgroundError {
+  margin: 0 18px 10px;
+}
+
+.agentPlayground .chatComposer {
+  padding: 16px 18px 18px;
+  background: rgba(11, 18, 26, 0.5);
+}
+
+.agentPlayground .chatComposer textarea {
+  min-height: 44px;
+}
+
+@media (max-width: 980px) {
+  .ticketWorkspace {
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .ticketWorkspace {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ticketSidebar {
+    max-height: 330px;
+  }
+
+  .agentPlayground {
+    min-height: 560px;
+  }
+
+  .playgroundHeader {
+    align-items: flex-start;
+    padding: 17px;
+  }
+
+  .playgroundHeader p:not(.eyebrow) {
+    max-width: 235px;
+    line-height: 1.5;
+  }
+
+  .playgroundMessages {
+    padding: 16px;
+  }
+
+  .agentPlayground .chatComposer {
+    padding: 12px;
+  }
 }

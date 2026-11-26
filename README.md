@@ -10,6 +10,9 @@ Nama paket Python-nya `coding-agent`; titik masuk CLI `coding-agent`.
 CLI / klien HTTP
       │
       ▼
+ITSM (tiket, chat, audit trail)
+      │
+      ▼
 Agent service tunggal (antrean + satu worker)
       │
       ▼
@@ -74,6 +77,24 @@ dimulai ulang. Job yang menargetkan proyek yang sama diserialisasi dengan file
 lock bersama. Definisi worker tambahan, Nginx, dan autoscaler tetap tersedia
 di profile `legacy-scaling`, tetapi tidak dijalankan oleh Compose default.
 
+### ITSM dan testing coding agent
+
+Compose juga menjalankan aplikasi ITSM Next.js di `http://localhost:3000`.
+Halaman utama memisahkan daftar insiden otomatis dari area uji coding agent.
+Self-healing membuat atau memperbarui tiket saat layanan gagal atau metrik
+resource melewati ambang batas, lalu menandai tiket pulih saat kondisi kembali
+normal. Pesan di playground mengirim job langsung ke coding agent dan tidak
+membuat tiket. Tiket disimpan pada volume Docker `itsm_data`; riwayat chat
+playground hanya berlaku selama halaman terbuka.
+`ITSM_SYSTEM_TOKEN` dapat diisi token khusus untuk laporan self-healing; bila
+kosong, Compose memakai `AGENT_API_TOKEN`.
+
+Port ITSM hanya bind ke loopback host (`127.0.0.1`) secara default. Jangan
+mengubahnya menjadi port publik sebelum autentikasi pengguna dan HTTPS
+disiapkan: akses chat dapat memicu coding agent mengubah file dan menjalankan
+perintah. Token agent hanya digunakan server ITSM dan tidak dikirim ke browser.
+Port dapat diubah lewat `ITSM_PORT`.
+
 API Ollama dipublish hanya ke loopback host pada port `OLLAMA_PORT` (default
 `11434`) agar CLI dan benchmark lokal dapat mengaksesnya tanpa mengeksposnya ke
 jaringan.
@@ -90,9 +111,9 @@ Aktifkan hanya saat dibutuhkan:
 docker compose --profile monitoring up -d
 ```
 
-Grafana tersedia di `http://localhost:3000` (dashboard Jiran sudah disediakan);
+Grafana tersedia di `http://localhost:3001` (dashboard Jiran sudah disediakan);
 Prometheus tersedia di `http://localhost:9090`. Kedua port hanya bind ke
-loopback host. Dashboard dapat dilihat tanpa login, tetapi aksesnya read-only.
+loopback host. Dashboard Grafana dapat dilihat tanpa login, tetapi aksesnya read-only.
 Prometheus menyimpan data selama 7 hari.
 
 Prometheus mengumpulkan metrik antrean, job selesai, dan durasi dari agent tunggal,

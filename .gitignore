@@ -19,6 +19,7 @@ itsm/.vercel/
 itsm/.env*
 !itsm/.env.example
 itsm/logs/
+itsm/data/
 itsm/next-env.d.ts
 *.tsbuildinfo
 point.md

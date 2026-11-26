@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { syncSystemIncident } from "@/lib/tickets";
+import { syncSystemIncident, type TicketSeverity } from "@/lib/tickets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +20,10 @@ function isText(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= maxLength;
 }
 
+function isSeverity(value: unknown): value is TicketSeverity {
+  return value === "low" || value === "medium" || value === "high";
+}
+
 export async function POST(request: Request) {
   if (!process.env.ITSM_SYSTEM_TOKEN) {
     return Response.json(
@@ -37,9 +41,11 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ error: "Body harus berupa JSON." }, { status: 400 });
   }
+  if (typeof payload !== "object" || payload === null) {
+    return Response.json({ error: "Data insiden tidak valid." }, { status: 400 });
+  }
+  const severity = "severity" in payload ? payload.severity : undefined;
   if (
-    typeof payload !== "object" ||
-    payload === null ||
     !("fingerprint" in payload) ||
     !isText(payload.fingerprint, 128) ||
     !("title" in payload) ||
@@ -47,7 +53,8 @@ export async function POST(request: Request) {
     !("detail" in payload) ||
     !isText(payload.detail, 2000) ||
     !("active" in payload) ||
-    typeof payload.active !== "boolean"
+    typeof payload.active !== "boolean" ||
+    (severity !== undefined && !isSeverity(severity))
   ) {
     return Response.json({ error: "Data insiden tidak valid." }, { status: 400 });
   }
@@ -58,6 +65,7 @@ export async function POST(request: Request) {
       title: payload.title.trim(),
       detail: payload.detail.trim(),
       active: payload.active,
+      severity,
     });
     return Response.json(
       { ticket },

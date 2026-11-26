@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type TicketStatus = "open" | "in_progress" | "resolved" | "failed";
+export type TicketSeverity = "low" | "medium" | "high";
 export type TicketMessageRole = "user" | "agent" | "system";
 
 export interface TicketMessage {
@@ -33,6 +34,7 @@ export interface Ticket {
   id: string;
   title: string;
   status: TicketStatus;
+  severity?: TicketSeverity;
   source?: "self-heal";
   fingerprint?: string;
   createdAt: string;
@@ -64,6 +66,8 @@ function isTicket(value: unknown): value is Ticket {
     ["open", "in_progress", "resolved", "failed"].includes(
       String(ticket.status),
     ) &&
+    (ticket.severity === undefined ||
+      ["low", "medium", "high"].includes(String(ticket.severity))) &&
     typeof ticket.createdAt === "string" &&
     typeof ticket.updatedAt === "string" &&
     Array.isArray(ticket.messages) &&
@@ -131,6 +135,7 @@ export interface SystemIncidentUpdate {
   title: string;
   detail: string;
   active: boolean;
+  severity?: TicketSeverity;
 }
 
 export async function syncSystemIncident(
@@ -153,7 +158,11 @@ export async function syncSystemIncident(
       return existing;
     }
 
-    if (existing) return existing;
+    if (existing) {
+      existing.severity =
+        incident.severity ?? existing.severity ?? "medium";
+      return existing;
+    }
 
     const createdAt = now();
     const suffix = randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase();
@@ -162,6 +171,7 @@ export async function syncSystemIncident(
       id: `INC-${date}-${suffix}`,
       title: incident.title,
       status: "in_progress",
+      severity: incident.severity ?? "medium",
       source: "self-heal",
       fingerprint: incident.fingerprint,
       createdAt,

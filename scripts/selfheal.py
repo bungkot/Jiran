@@ -147,6 +147,7 @@ def report_incident(
     title: str,
     detail: str,
     active: bool,
+    severity: str = "medium",
     timeout_s: float = 5.0,
 ) -> bool:
     if not itsm_url or not token:
@@ -158,9 +159,10 @@ def report_incident(
             "title": title,
             "detail": detail,
             "active": active,
+            "severity": severity,
         }
     ).encode()
-    request = urllib.request.Request(
+    request = urllib.request.Request(  # noqa: S310 - URL is validated as HTTP(S) above.
         _http_url(itsm_url.rstrip("/") + "/api/system/incidents"),
         data=payload,
         headers={
@@ -354,6 +356,7 @@ def run_once(
             f"Service {item['name']} down",
             detail,
             active,
+            severity="high",
         )
 
     resources = poll_resources(prometheus_url)
@@ -370,6 +373,7 @@ def run_once(
             f"Resource {key} kritis",
             f"{key}={value:.1f}% ({state_text}; ambang {threshold:.1f}%).",
             active,
+            severity="medium",
         )
     print(
         f"[{time.strftime('%H:%M:%S')}] resources: {resource_summary(resources)}",

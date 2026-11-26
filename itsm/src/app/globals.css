@@ -1099,6 +1099,43 @@ th {
   font-size: 9px;
 }
 
+.incidentBadges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.severityBadge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.severity-low {
+  border-color: rgba(82, 211, 176, 0.4);
+  background: rgba(82, 211, 176, 0.1);
+  color: #72e0c3;
+}
+
+.severity-medium {
+  border-color: rgba(240, 191, 103, 0.4);
+  background: rgba(240, 191, 103, 0.1);
+  color: #f3cb7e;
+}
+
+.severity-high {
+  border-color: rgba(255, 119, 119, 0.42);
+  background: rgba(255, 119, 119, 0.11);
+  color: #ff9292;
+}
+
 .incidentSummary > strong {
   font-size: 12px;
   font-weight: 600;

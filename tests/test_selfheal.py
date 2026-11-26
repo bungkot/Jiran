@@ -20,6 +20,47 @@ def test_poll_state_checks_single_agent(monkeypatch):
     assert checked == ["http://agent-1:8765/health"]
 
 
+def test_report_incident_sends_severity(monkeypatch):
+    sent = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+    def urlopen(request, timeout):
+        sent.append((json.loads(request.data), timeout))
+        return Response()
+
+    monkeypatch.setattr(selfheal.urllib.request, "urlopen", urlopen)
+
+    assert selfheal.report_incident(
+        "http://itsm",
+        "token",
+        "service:agent-1",
+        "Service agent-1 down",
+        "Service tidak sehat.",
+        True,
+        severity="high",
+    )
+    assert sent == [
+        (
+            {
+                "fingerprint": "service:agent-1",
+                "title": "Service agent-1 down",
+                "detail": "Service tidak sehat.",
+                "active": True,
+                "severity": "high",
+            },
+            5.0,
+        )
+    ]
+
+
 def test_container_lookup_scopes_to_compose_project(monkeypatch):
     requests = []
 

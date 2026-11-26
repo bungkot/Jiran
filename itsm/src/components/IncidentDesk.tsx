@@ -11,6 +11,12 @@ const STATUS_LABELS: Record<Ticket["status"], string> = {
   failed: "Gagal",
 };
 
+const SEVERITY_LABELS: Record<NonNullable<Ticket["severity"]>, string> = {
+  low: "Rendah",
+  medium: "Sedang",
+  high: "Tinggi",
+};
+
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("id-ID", {
     dateStyle: "medium",
@@ -29,6 +35,9 @@ function isTicket(value: unknown): value is Ticket {
     ["open", "in_progress", "resolved", "failed"].includes(
       String(value.status),
     ) &&
+    (!("severity" in value) ||
+      value.severity === undefined ||
+      ["low", "medium", "high"].includes(String(value.severity))) &&
     "updatedAt" in value &&
     typeof value.updatedAt === "string" &&
     "messages" in value &&
@@ -115,8 +124,16 @@ export default function IncidentDesk() {
                   <summary className="incidentSummary">
                     <span className="incidentMeta">
                       <span>{ticket.id}</span>
-                      <span className={`statusBadge status-${ticket.status}`}>
-                        {STATUS_LABELS[ticket.status]}
+                      <span className="incidentBadges">
+                        <span
+                          className={`severityBadge severity-${ticket.severity ?? "medium"}`}
+                          aria-label={`Severity ${SEVERITY_LABELS[ticket.severity ?? "medium"]}`}
+                        >
+                          {SEVERITY_LABELS[ticket.severity ?? "medium"]}
+                        </span>
+                        <span className={`statusBadge status-${ticket.status}`}>
+                          {STATUS_LABELS[ticket.status]}
+                        </span>
                       </span>
                     </span>
                     <strong>{ticket.title}</strong>

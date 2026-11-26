@@ -10,4 +10,15 @@ logs/*
 .coverage
 .mypy_cache/
 .ruff_cache/
+itsm/node_modules/
+itsm/.next/
+itsm/out/
+itsm/build/
+itsm/coverage/
+itsm/.vercel/
+itsm/.env*
+!itsm/.env.example
+itsm/logs/
+itsm/next-env.d.ts
+*.tsbuildinfo
 point.md

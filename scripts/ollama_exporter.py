@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -25,11 +26,15 @@ def poll(base_url: str, timeout_s: float) -> tuple[int, int]:
     """Return (up, response_ms); up=0 saat error/timeout."""
     start = time.perf_counter()
     try:
-        req = urllib.request.Request(base_url.rstrip("/") + "/api/version")
-        with urllib.request.urlopen(req, timeout=timeout_s) as response:
+        url = base_url.rstrip("/") + "/api/version"
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("OLLAMA_BASE_URL harus berupa URL HTTP(S) yang valid")
+        req = urllib.request.Request(url)  # noqa: S310 - scheme dibatasi ke HTTP(S)
+        with urllib.request.urlopen(req, timeout=timeout_s) as response:  # noqa: S310
             status = response.status
             response.read()
-    except (urllib.error.URLError, OSError, TimeoutError):
+    except (urllib.error.URLError, OSError, TimeoutError, ValueError):
         return 0, int((time.perf_counter() - start) * 1000)
     ms = int((time.perf_counter() - start) * 1000)
     return (1 if status == 200 else 0), ms
@@ -44,7 +49,7 @@ class Handler(BaseHTTPRequestHandler):
         body = (
             f"# TYPE ollama_up gauge\nollama_up {up}\n"
             f"# TYPE ollama_response_ms gauge\nollama_response_ms {ms}\n"
-        ).encode("utf-8")
+        ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; version=0.0.4")
         self.send_header("Content-Length", str(len(body)))
@@ -57,7 +62,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",  # noqa: S104 - hanya di-expose pada jaringan internal Compose
+    )
     parser.add_argument("--port", type=int, default=9191)
     parser.add_argument("--url", default="http://localhost:11434")
     args = parser.parse_args(argv)

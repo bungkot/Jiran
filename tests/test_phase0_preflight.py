@@ -123,7 +123,7 @@ def test_agent_preflight_does_not_require_node_or_npm(monkeypatch, settings):
     monkeypatch.setattr(
         pf.httpx,
         "get",
-        lambda *args, **kwargs: FakeResp({"models": [{"name": "qwen3.5:4b"}]}),
+        lambda *args, **kwargs: FakeResp({"models": [{"name": settings.ollama_model}]}),
     )
     monkeypatch.setattr(
         pf.httpx,
@@ -139,8 +139,8 @@ def test_agent_preflight_does_not_require_node_or_npm(monkeypatch, settings):
         "workspace",
         "docker",
         "ollama",
-        "model:qwen3.5:4b",
-        "model-tools:qwen3.5:4b",
+        f"model:{settings.ollama_model}",
+        f"model-tools:{settings.ollama_model}",
     }
 
 
@@ -157,7 +157,7 @@ def test_agent_preflight_requires_tool_capable_model(monkeypatch, settings):
     monkeypatch.setattr(
         pf.httpx,
         "get",
-        lambda *args, **kwargs: FakeResp({"models": [{"name": "qwen3.5:4b"}]}),
+        lambda *args, **kwargs: FakeResp({"models": [{"name": settings.ollama_model}]}),
     )
     monkeypatch.setattr(
         pf.httpx,

@@ -54,13 +54,11 @@ uv run coding-agent goal --project demo --verify "python -m unittest discover -q
 
 ### Menjalankan seluruh stack lewat Compose
 
-Compose canonical ada di `apps/Jiran/docker-compose.yaml`. Dari folder proyek:
+Compose canonical ada di `docker-compose.yaml`. Jalankan dari root repository:
 
 ```bash
-cd apps/Jiran
 export AGENT_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-# Saat migrasi dari service agent tunggal, pastikan antrean lama kosong:
-docker compose up -d --remove-orphans
+docker compose up -d --build
 uv run coding-agent submit "Buat kalkulator CLI"
 uv run coding-agent job <id>
 ```
@@ -69,13 +67,18 @@ uv run coding-agent job <id>
 container dan endpoint `/goals` dapat memicu agent menulis file serta menjalankan
 perintah. Token minimal 32 karakter.
 
-Compose menjalankan dua worker agent di belakang Nginx. Request submit dibagi
-bergiliran; ID job memiliki prefix worker agar polling berikutnya tetap mencapai
-container pemilik antrean. CLI menampilkan ID container pada submit/status.
+Compose menyediakan tiga worker agent di belakang Nginx. Autoscaler
+mempertahankan satu worker saat idle atau hanya ada satu job aktif, dan
+menyalakan worker tambahan ketika jumlah job berjalan/menunggu memerlukan
+kapasitas konkuren. Worker idle dihentikan segera setelah kapasitas tambahannya
+tidak dibutuhkan; worker yang baru menyelesaikan job dipertahankan 60 detik
+agar klien sempat mengambil hasil akhir. Request submit dibagi bergiliran; ID job memiliki prefix
+worker agar polling berikutnya tetap mencapai container pemilik antrean. CLI
+menampilkan ID container pada submit/status.
 CLI di host memakai `AGENT_SERVICE_URL=http://localhost:8765` (port Nginx yang
 dipublish); CLI yang dijalankan dari container memakai `http://agent-lb:8765`.
 Dengan begitu CLI tidak perlu memilih worker atau mengetahui alamat container.
-Kedua worker berbagi workspace dan log, tetapi job/antrean berada di memori
+Semua worker berbagi workspace dan log, tetapi job/antrean berada di memori
 masing-masing container dan hilang saat container dimulai ulang. Job yang
 menargetkan proyek yang sama diserialisasi dengan file lock bersama.
 
@@ -100,7 +103,7 @@ Prometheus tersedia di `http://localhost:9090`. Kedua port hanya bind ke
 loopback host. Dashboard dapat dilihat tanpa login, tetapi aksesnya read-only.
 Prometheus menyimpan data selama 7 hari.
 
-Prometheus mengumpulkan metrik antrean, job selesai, dan durasi dari kedua agent,
+Prometheus mengumpulkan metrik antrean, job selesai, dan durasi dari ketiga agent,
 serta metrik CPU, memori, dan filesystem host dari Node Exporter. Endpoint
 `/metrics` hanya tersedia di jaringan internal Compose dan diblokir oleh Nginx.
 Node Exporter memerlukan mount read-only `/`, `/proc`, dan `/sys` untuk membaca

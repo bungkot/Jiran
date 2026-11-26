@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .env
+.env.*
 .coverage
 .mypy_cache/
 .pytest_cache/
@@ -11,5 +12,6 @@ __pycache__/
 tests/
 logs/
 workspace/
+itsm/
 point.md
 README.md

@@ -2,11 +2,13 @@
 #
 # Jalankan dari folder ini:
 #   docker compose up -d
-# Atau dari root repo (root/docker-compose.yml hanya wrapper):
-#   export JIRAN_ROOT="$PWD/apps/Jiran" && docker compose up -d
+# Jalankan dari root repository:
+#   docker compose up -d --build
 #
 # JIRAN_ROOT boleh dioverride bila folder proyek dipindah; default-nya ${PWD}.
 # Path host dan container sengaja SAMA agar bind mount docker-in-docker valid.
+
+name: ${COMPOSE_PROJECT_NAME:-jiran}
 
 services:
   ollama:
@@ -75,6 +77,30 @@ services:
       retries: 3
       start_period: 10s
     mem_limit: 128m
+    restart: unless-stopped
+
+  # Watchdog self-healing: monitor layanan (ollama dan seluruh agent),
+  # diagnose dengan LLM via Ollama, lalu restart container yang DOWN
+  # (lihat scripts/selfheal.py; action lain hanya dicatat).
+  selfheal:
+    image: python:3.13-slim
+    working_dir: /app
+    command: ["python", "selfheal.py"]
+    volumes:
+      - ./scripts/selfheal.py:/app/selfheal.py:ro
+      # Docker socket: selfheal restart container (ollama/agent) saat DOWN.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
+      SELFHEAL_INTERVAL: "60"
+      SELFHEAL_WATCH: "agent-1,agent-2,agent-3,ollama"
+      SELFHEAL_PROMETHEUS_URL: "http://prometheus:9090"
+      SELFHEAL_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-jiran}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    mem_limit: 256m
     restart: unless-stopped
 
   agent-1:
@@ -203,12 +229,92 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Worker ketiga (untuk autoscaler, lihat service autoscale bawah).
+  agent-3:
+    build: .
+    image: coding-agent:local
+    depends_on:
+      ollama-model:
+        condition: service_completed_successfully
+    command: serve
+    expose:
+      - "8765"
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-300}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      MAX_CONTEXT_CHARS: ${MAX_CONTEXT_CHARS:-12000}
+      MAX_AGENT_STEPS: ${MAX_AGENT_STEPS:-15}
+      MAX_AGENT_TOOL_CALLS: ${MAX_AGENT_TOOL_CALLS:-30}
+      MAX_GOAL_ITER: ${MAX_GOAL_ITER:-5}
+      MAX_GOAL_ITER_LIMIT: ${MAX_GOAL_ITER_LIMIT:-50}
+      REQUIRE_JUDGE_ON_FAST_PATH: ${REQUIRE_JUDGE_ON_FAST_PATH:-false}
+      MAX_FIX_ITER: ${MAX_FIX_ITER:-3}
+      COMMAND_TIMEOUT_S: ${COMMAND_TIMEOUT_S:-300}
+      AGENT_SANDBOX_IMAGE: ${AGENT_SANDBOX_IMAGE:-}
+      AGENT_SANDBOX_NETWORK: ${AGENT_SANDBOX_NETWORK:-none}
+      AGENT_SANDBOX_MEMORY_MB: ${AGENT_SANDBOX_MEMORY_MB:-256}
+      AGENT_SANDBOX_CPUS: ${AGENT_SANDBOX_CPUS:-1}
+      AGENT_SANDBOX_PIDS_LIMIT: ${AGENT_SANDBOX_PIDS_LIMIT:-128}
+      AGENT_SANDBOX_MIN_FREE_DISK_MB: ${AGENT_SANDBOX_MIN_FREE_DISK_MB:-256}
+      AGENT_SANDBOX_DISK_QUOTA_MB: ${AGENT_SANDBOX_DISK_QUOTA_MB:-0}
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:?AGENT_API_TOKEN wajib diisi, min. 32 karakter}
+      WORKSPACE_DIR: ${JIRAN_ROOT:-${PWD}}/workspace
+      AGENT_LOGS_DIR: ${JIRAN_ROOT:-${PWD}}/logs
+      AGENT_SERVICE_HOST: 0.0.0.0
+      AGENT_SERVICE_PORT: 8765
+      AGENT_SERVICE_URL: http://agent-lb:8765
+      AGENT_INSTANCE_ID: agent-3
+      AGENT_CONTAINER_DOCKER_SOCKET: ${AGENT_CONTAINER_DOCKER_SOCKET:-false}
+    volumes:
+      - ${JIRAN_ROOT:-${PWD}}/workspace:${JIRAN_ROOT:-${PWD}}/workspace
+      - ${JIRAN_ROOT:-${PWD}}/logs:${JIRAN_ROOT:-${PWD}}/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-991}"
+    mem_limit: 256m
+    cpus: 1.0
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Autoscaler menjaga 1 worker dasar dan menambah kapasitas hanya untuk job konkuren.
+  autoscale:
+    image: python:3.13-slim
+    working_dir: /app
+    command: ["python", "autoscale.py"]
+    volumes:
+      - ./scripts/autoscale.py:/app/autoscale.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      AUTOSCALE_SERVICES: "agent-1,agent-2,agent-3"
+      AUTOSCALE_MAX: "3"
+      AUTOSCALE_INTERVAL: "10"
+      AUTOSCALE_DRAIN_GRACE_SECONDS: "60"
+      AUTOSCALE_DOCKER_SOCKET: /var/run/docker.sock
+      AUTOSCALE_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-jiran}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    mem_limit: 256m
+    restart: unless-stopped
+
   agent-lb:
     image: nginx:alpine
     depends_on:
       agent-1:
-        condition: service_healthy
-      agent-2:
         condition: service_healthy
     ports:
       - "127.0.0.1:${AGENT_SERVICE_PORT:-8765}:8765"

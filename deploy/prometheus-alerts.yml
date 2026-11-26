@@ -3,7 +3,7 @@ groups:
     interval: 30s
     rules:
       - alert: JiranOllamaDown
-        expr: up{job="ollama"} == 0
+        expr: up{job="ollama-exporter"} == 0
         for: 30s
         labels:
           severity: critical

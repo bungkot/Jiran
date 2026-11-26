@@ -417,6 +417,7 @@ class AgentService:
             except queue.Empty:
                 continue
             started = time.monotonic()
+            project_path: Path | None = None
             try:
                 with self._changed:
                     if job.cancel_event.is_set():
@@ -449,6 +450,7 @@ class AgentService:
                     job.files = files
                     job.response = result.response
                     job.status = "completed" if result.achieved else "failed"
+                    self._persist(job)
             except AgentCancelled:
                 with self._lock:
                     job.status = "cancelled"
@@ -458,18 +460,21 @@ class AgentService:
                     )
                     if project_path is not None and project_path.is_dir():
                         job.files = visible_project_files(project_path)
+                    self._persist(job)
             except GoalError as exc:
                 with self._lock:
                     job.status = "failed"
                     job.error = str(exc)
                     job.error_public = "Goal tidak dapat diselesaikan."
                     job.reason = str(exc)
+                    self._persist(job)
             except Exception as exc:  # noqa: BLE001 - worker harus tetap hidup
                 with self._lock:
                     job.status = "failed"
                     job.error = f"{type(exc).__name__}: {exc}"
                     job.error_public = "Worker mengalami error tak terduga."
                     job.reason = "Worker mengalami error tak terduga."
+                    self._persist(job)
             finally:
                 with self._changed:
                     job.finished_at = _now()

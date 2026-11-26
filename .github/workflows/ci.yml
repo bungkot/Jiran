@@ -33,6 +33,21 @@ jobs:
       - run: uv run mypy src/agent
       - run: uv run pytest -q --cov --cov-report=term-missing --cov-report=xml
 
+  itsm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: itsm/package-lock.json
+      - working-directory: itsm
+        run: npm ci
+      - working-directory: itsm
+        run: npm run build
+
   # E2E sengaja tidak dijalankan pada setiap push: butuh Ollama + Docker dan
   # memakan waktu beberapa menit. Picu manual lewat Actions > Run workflow.
   integration:

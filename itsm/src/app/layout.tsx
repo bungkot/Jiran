@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import PrimaryNavigation from "@/components/PrimaryNavigation";
 import "./globals.css";
-import { PROMETHEUS_URL } from "@/lib/prometheus";
 
 export const metadata = {
   title: "JIRAN CODING — LLM-Assisted Development",
@@ -25,9 +24,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <span className="localOnlyBadge">LOCAL ONLY</span>
         </header>
         <main className="mainContent">{children}</main>
-        <footer className="appFooter">
-          ITSM server · Prometheus: {PROMETHEUS_URL}
-        </footer>
       </body>
     </html>
   );

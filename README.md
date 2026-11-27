@@ -1,5 +1,7 @@
 # Jiran — coding agent lokal dengan eksekusi terisolasi
 
+[![CI](https://github.com/bungkot/Jiran/actions/workflows/ci.yml/badge.svg)](https://github.com/bungkot/Jiran/actions/workflows/ci.yml)
+
 Jiran adalah coding agent lokal, stack-neutral, yang bekerja dengan model Ollama
 dan menjalankan perintah verifikasi di dalam container Docker sekali pakai.
 Nama paket Python-nya `coding-agent`; titik masuk CLI `coding-agent`.

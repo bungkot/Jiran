@@ -117,9 +117,7 @@ def test_agent_logs_full_model_and_tool_exchange_with_private_permissions(settin
     )
     request_event = next(event for event in events if event["event"] == "model.request")
     system_prompt = next(
-        message["content"]
-        for message in request_event["messages"]
-        if message["type"] == "system"
+        message["content"] for message in request_event["messages"] if message["type"] == "system"
     )
     normalized_prompt = " ".join(system_prompt.split())
     assert "If the request is in Indonesian, respond in Indonesian" in normalized_prompt
@@ -163,9 +161,7 @@ def test_agent_requests_summary_after_one_empty_final_response(settings):
     ]
     assert any(event["event"] == "model.empty_response" for event in events)
     retry_request = next(
-        event
-        for event in events
-        if event["event"] == "model.request" and event["step"] == 4
+        event for event in events if event["event"] == "model.request" and event["step"] == 4
     )
     retry_prompt = retry_request["messages"][-1]["content"]
     assert "language of the user's original request" in retry_prompt

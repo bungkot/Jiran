@@ -365,9 +365,7 @@ def run_once(
             continue
         threshold = RESOURCE_THRESHOLDS[key]
         active = value > threshold
-        state_text = (
-            "above the critical threshold" if active else "back to normal"
-        )
+        state_text = "above the critical threshold" if active else "back to normal"
         report_incident(
             itsm_url,
             itsm_token,

@@ -10,6 +10,28 @@
 
 name: ${COMPOSE_PROJECT_NAME:-jiran}
 
+x-airflow-common: &airflow-common
+  image: jiran-airflow:local
+  build:
+    context: ./airflow
+  environment: &airflow-environment
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-}@airflow-db/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY:-}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__PARALLELISM: "2"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    PYTHONPATH: /opt/airflow
+  volumes:
+    - airflow_logs:/opt/airflow/logs
+    - ./airflow/dags:/opt/airflow/dags:ro
+    - ./scripts/benchmark_models.py:/opt/airflow/benchmark_models.py:ro
+    - ./scripts/selfheal.py:/opt/airflow/selfheal.py:ro
+  user: "${AIRFLOW_UID:-50000}:0"
+  restart: unless-stopped
+
 services:
   ollama:
     image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
@@ -77,34 +99,6 @@ services:
       retries: 3
       start_period: 10s
     mem_limit: 128m
-    restart: unless-stopped
-
-  # Watchdog self-healing: monitor layanan (ollama dan agent tunggal),
-  # diagnose dengan LLM via Ollama, lalu restart container yang DOWN
-  # (lihat scripts/selfheal.py; action lain hanya dicatat).
-  selfheal:
-    image: python:3.13-slim
-    working_dir: /app
-    command: ["python", "selfheal.py"]
-    volumes:
-      - ./scripts/selfheal.py:/app/selfheal.py:ro
-      # Docker socket: selfheal restart container (ollama/agent) saat DOWN.
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
-      SELFHEAL_INTERVAL: "60"
-      SELFHEAL_ITSM_URL: http://itsm:3000
-      ITSM_SYSTEM_TOKEN: ${ITSM_SYSTEM_TOKEN:-${AGENT_API_TOKEN}}
-      SELFHEAL_WATCH: "agent-1,ollama"
-      SELFHEAL_PROMETHEUS_URL: "http://prometheus:9090"
-      SELFHEAL_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-jiran}
-    depends_on:
-      ollama:
-        condition: service_healthy
-      itsm:
-        condition: service_started
-    mem_limit: 256m
     restart: unless-stopped
 
   agent-1:
@@ -429,8 +423,125 @@ services:
     cpus: 0.5
     restart: unless-stopped
 
+  airflow-db:
+    profiles: ["airflow"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-}
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    environment:
+      <<: *airflow-environment
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
+      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-airflow@localhost}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-}
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        : "$${AIRFLOW__CORE__FERNET_KEY:?Set AIRFLOW_FERNET_KEY in .env}"
+        : "$${AIRFLOW__WEBSERVER__SECRET_KEY:?Set AIRFLOW_WEBSERVER_SECRET_KEY in .env}"
+        : "$${AIRFLOW_ADMIN_PASSWORD:?Set AIRFLOW_ADMIN_PASSWORD in .env}"
+        airflow db migrate
+        if airflow users list --output json | python -c 'import json, os, sys; sys.exit(0 if any(user.get("username") == os.environ["AIRFLOW_ADMIN_USERNAME"] for user in json.load(sys.stdin)) else 1)'; then
+          echo "Airflow admin user already exists."
+        else
+          airflow users create \
+            --username "$$AIRFLOW_ADMIN_USERNAME" \
+            --firstname Airflow \
+            --lastname Admin \
+            --role Admin \
+            --email "$$AIRFLOW_ADMIN_EMAIL" \
+            --password "$$AIRFLOW_ADMIN_PASSWORD"
+        fi
+    restart: "no"
+
+  airflow-scheduler:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    command: scheduler
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-environment
+      AGENT_SERVICE_URL: http://agent-1:8765
+      AGENT_API_TOKEN: ${AGENT_API_TOKEN:?AGENT_API_TOKEN wajib diisi, min. 32 karakter}
+      ITSM_SYSTEM_URL: http://itsm:3000
+      ITSM_SYSTEM_TOKEN: ${ITSM_SYSTEM_TOKEN:-${AGENT_API_TOKEN:?AGENT_API_TOKEN wajib diisi}}
+      AIRFLOW_AGENT_JOB_TIMEOUT_S: "1800"
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b-q4_K_M}
+      SELFHEAL_WATCH: "agent-1,ollama"
+      SELFHEAL_DOCKER_SOCKET: /var/run/docker.sock
+      SELFHEAL_PROMETHEUS_URL: http://prometheus:9090
+      SELFHEAL_COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME:-jiran}
+      SELFHEAL_DRY_RUN: ${SELFHEAL_DRY_RUN:-false}
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+      - ./airflow/dags:/opt/airflow/dags:ro
+      - ./scripts/benchmark_models.py:/opt/airflow/benchmark_models.py:ro
+      - ./scripts/selfheal.py:/opt/airflow/selfheal.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-991}"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 768m
+    cpus: 1.0
+
+  airflow-webserver:
+    <<: *airflow-common
+    profiles: ["airflow"]
+    command: webserver
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    mem_limit: 512m
+    cpus: 0.5
+
 volumes:
   itsm_data:
   prometheus_data:
   grafana_data:
+  airflow_db_data:
+  airflow_logs:
 

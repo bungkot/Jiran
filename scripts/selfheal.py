@@ -314,18 +314,20 @@ def ask_llm_resources(
         return None
 
 
-def _restart_if_target(sock_path: str, target: str, *, project: str, dry_run: bool) -> None:
+def _restart_if_target(sock_path: str, target: str, *, project: str, dry_run: bool) -> bool:
     if dry_run:
         print(f"  dry-run: restart {target} diabaikan.", flush=True)
-        return
+        return True
     container = find_container_name(sock_path, target, project)
     if not container:
         print(f"  container untuk {target} tidak ditemukan; biarkan.", flush=True)
-        return
+        return False
     if docker_restart(sock_path, container):
         print(f"  [self-heal] restart container {container} (service {target})", flush=True)
+        return True
     else:
         print(f"  [self-heal] gagal restart {container}.", flush=True)
+        return False
 
 
 def run_once(
@@ -339,7 +341,10 @@ def run_once(
     dry_run=False,
     itsm_url="",
     itsm_token="",
+    strict_reporting=False,
 ) -> None:
+    report_failures = []
+    remediation_failures = []
     state = poll_state(watch)
     by_name = {item["name"]: item for item in state}
     for item in state:
@@ -349,7 +354,7 @@ def run_once(
             if active
             else f"Service {item['name']} has recovered."
         )
-        report_incident(
+        if not report_incident(
             itsm_url,
             itsm_token,
             f"service:{item['name']}",
@@ -357,7 +362,8 @@ def run_once(
             detail,
             active,
             severity="high",
-        )
+        ):
+            report_failures.append(f"service:{item['name']}")
 
     resources = poll_resources(prometheus_url)
     for key, value in resources.items():
@@ -366,7 +372,7 @@ def run_once(
         threshold = RESOURCE_THRESHOLDS[key]
         active = value > threshold
         state_text = "above the critical threshold" if active else "back to normal"
-        report_incident(
+        if not report_incident(
             itsm_url,
             itsm_token,
             f"resource:{key}",
@@ -374,7 +380,8 @@ def run_once(
             f"{key}={value:.1f}% ({state_text}; threshold {threshold:.1f}%).",
             active,
             severity="medium",
-        )
+        ):
+            report_failures.append(f"resource:{key}")
     print(
         f"[{time.strftime('%H:%M:%S')}] resources: {resource_summary(resources)}",
         flush=True,
@@ -386,6 +393,10 @@ def run_once(
             f"{[item['name'] for item in state]}",
             flush=True,
         )
+        if strict_reporting and report_failures:
+            raise RuntimeError(
+                "ITSM incident reports failed: " + ", ".join(report_failures)
+            )
         return
     down_names = [item["name"] for item in down]
     agent_down = [n for n in down_names if n in AGENT_SERVICES]
@@ -410,13 +421,15 @@ def run_once(
                 flush=True,
             )
             if action == "restart" and target in agent_down:
-                _restart_if_target(sock_path, target, project=project, dry_run=dry_run)
+                if not _restart_if_target(sock_path, target, project=project, dry_run=dry_run):
+                    remediation_failures.append(target)
             elif action != "restart":
                 print(f"  action={action}: biarkan (alert rule tetap berjalan).", flush=True)
 
     # Prio-2: ollama — fallback restart (diagnosis LLM tak bisa saat LLM itu sendiri down).
     for target in ollama_down:
-        _restart_if_target(sock_path, target, project=project, dry_run=dry_run)
+        if not _restart_if_target(sock_path, target, project=project, dry_run=dry_run):
+            remediation_failures.append(target)
 
     # Prio-3: sumber daya kritis → diagnose dengan LLM-assisted (tidak auto-restart).
     critical = {
@@ -428,6 +441,10 @@ def run_once(
         print(f"  [resources] kritis: {resource_summary(critical)}", flush=True)
         decision = ask_llm_resources(base_url, model, resources)
         print(f"  [resources] decision={decision}", flush=True)
+    if strict_reporting and report_failures:
+        raise RuntimeError("ITSM incident reports failed: " + ", ".join(report_failures))
+    if strict_reporting and remediation_failures:
+        raise RuntimeError("Container restart failed for: " + ", ".join(remediation_failures))
 
 
 def main(argv: list[str] | None = None) -> int:

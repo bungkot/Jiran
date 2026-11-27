@@ -1,6 +1,8 @@
 import json
 import urllib.parse
 
+import pytest
+
 from scripts import selfheal
 
 
@@ -59,6 +61,51 @@ def test_report_incident_sends_severity(monkeypatch):
             5.0,
         )
     ]
+
+
+def test_strict_reporting_raises_when_itsm_is_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        selfheal,
+        "poll_state",
+        lambda _watch: [{"name": "agent-1", "status": "up"}, {"name": "ollama", "status": "up"}],
+    )
+    monkeypatch.setattr(selfheal, "poll_resources", lambda _url: {})
+    monkeypatch.setattr(selfheal, "report_incident", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="service:agent-1, service:ollama"):
+        selfheal.run_once(
+            ("agent-1", "ollama"),
+            "http://ollama:11434",
+            "model",
+            "/var/run/docker.sock",
+            "http://prometheus:9090",
+            itsm_url="http://itsm:3000",
+            itsm_token="token",
+            strict_reporting=True,
+        )
+
+
+def test_strict_reporting_raises_when_container_restart_fails(monkeypatch):
+    monkeypatch.setattr(
+        selfheal,
+        "poll_state",
+        lambda _watch: [{"name": "ollama", "status": "down"}],
+    )
+    monkeypatch.setattr(selfheal, "poll_resources", lambda _url: {})
+    monkeypatch.setattr(selfheal, "report_incident", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(selfheal, "_restart_if_target", lambda *_args, **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="Container restart failed for: ollama"):
+        selfheal.run_once(
+            ("ollama",),
+            "http://ollama:11434",
+            "model",
+            "/var/run/docker.sock",
+            "http://prometheus:9090",
+            itsm_url="http://itsm:3000",
+            itsm_token="token",
+            strict_reporting=True,
+        )
 
 
 def test_container_lookup_scopes_to_compose_project(monkeypatch):

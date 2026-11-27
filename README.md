@@ -73,7 +73,8 @@ to modify files and execute commands. The token must contain at least 32
 characters.
 
 By default, Compose runs one coding agent on port `8765`, bound to the host's
-loopback interface. The load balancer and autoscaler are disabled. Jobs are
+loopback interface. The load balancer, autoscaler, and Airflow are disabled.
+Self-healing is provided by the optional Airflow profile described below. Jobs are
 processed by a single worker and serialized through the same queue. Host-side
 CLI commands use `AGENT_SERVICE_URL=http://localhost:8765`; commands running
 inside a container use `http://agent-1:8765`. Jobs and the queue are held in
@@ -86,12 +87,12 @@ are not started by default.
 
 Compose also starts the ITSM Next.js application at `http://localhost:3000`.
 The home page separates automatically created incidents from the coding-agent
-playground. Self-healing creates or updates a ticket when a service fails or a
-resource metric exceeds its threshold, then marks the ticket as recovered when
-the condition clears. Service outages are high severity; resource threshold
-alerts are medium severity. Low, medium, and high severities are shown in
-green, yellow, and red, respectively. Older tickets without a severity are
-displayed as medium.
+playground. When Airflow is enabled, its self-healing DAG creates or updates a
+ticket when a service fails or a resource metric exceeds its threshold, then
+marks the ticket as recovered when the condition clears. Service outages are
+high severity; resource threshold alerts are medium severity. Low, medium, and
+high severities are shown in green, yellow, and red, respectively. Older tickets
+without a severity are displayed as medium.
 
 Messages in the playground submit jobs directly to the coding agent and do not
 create tickets. Tickets are stored in the `itsm_data` Docker volume. Playground
@@ -139,6 +140,51 @@ limit of 896 MiB. Stop them when not needed:
 
 ```bash
 docker compose stop grafana prometheus node-exporter
+```
+
+### Optional Airflow orchestration and self-healing
+
+The old standalone `selfheal` watchdog has been replaced by Airflow. Its
+`jiran_self_healing` DAG checks Ollama, the agent, and available Prometheus
+resource metrics every minute. It synchronizes active/recovered ITSM incidents,
+restarts Ollama when it is down, and asks Ollama whether a down agent should be
+restarted. Set `SELFHEAL_DRY_RUN=true` to disable container restarts while
+retaining checks and incident reporting.
+
+The weekly `agent_quality_gate` DAG also checks the active model through the
+authenticated agent API using the smoke-test cases from
+`scripts/benchmark_models.py`. It runs Mondays at 02:00 UTC. Both DAGs allow
+only one active run at a time.
+
+Airflow remains opt-in to avoid adding about 1.5 GiB of container memory use to
+the default stack. Its local image uses the slim Airflow base plus the
+PostgreSQL driver. **The default Compose stack no longer runs self-healing.**
+Start the Airflow profile below to enable it. The Airflow scheduler has the
+Docker socket mounted so its DAG can restart Compose services; access to that
+socket is equivalent to root access on the host. The socket is not mounted in
+the Airflow webserver, whose UI is loopback-only by default.
+
+Before starting Airflow, set `AIRFLOW_DB_PASSWORD`, `AIRFLOW_FERNET_KEY`,
+`AIRFLOW_WEBSERVER_SECRET_KEY`, and `AIRFLOW_ADMIN_PASSWORD` in `.env`. Use
+random URL-safe values; for example, generate a hex secret with
+`python -c 'import secrets; print(secrets.token_hex(32))'` and a Fernet key with
+`python -c 'import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'`.
+Use hex values for the database password, webserver key, and admin password,
+and the Fernet command for the Fernet key.
+
+Start the full stack with Airflow self-healing enabled:
+
+```bash
+docker compose --profile airflow up -d
+```
+
+Open `http://localhost:8080` and sign in with `AIRFLOW_ADMIN_USERNAME` and
+`AIRFLOW_ADMIN_PASSWORD`. The UI is loopback-only by default. DAG task history
+and metadata persist in dedicated Airflow volumes. To stop Airflow without
+stopping the core stack, run:
+
+```bash
+docker compose --profile airflow stop airflow-webserver airflow-scheduler airflow-db
 ```
 
 ## CLI Commands

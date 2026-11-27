@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -26,7 +27,8 @@ def test_generic_agent_edits_and_verifies_python_project():
         (project / ".env").write_text("API_TOKEN=must-not-be-mounted\n", encoding="utf-8")
         target = project / "src" / "main.py"
         target.write_text("MESSAGE = 'before'\n", encoding="utf-8")
-        settings = Settings(
+        settings = replace(
+            Settings.load(),
             workspace_dir=workspace,
             logs_dir=base / "logs",
             llm_timeout_s=120,

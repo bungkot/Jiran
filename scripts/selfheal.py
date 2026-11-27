@@ -394,9 +394,7 @@ def run_once(
             flush=True,
         )
         if strict_reporting and report_failures:
-            raise RuntimeError(
-                "ITSM incident reports failed: " + ", ".join(report_failures)
-            )
+            raise RuntimeError("ITSM incident reports failed: " + ", ".join(report_failures))
         return
     down_names = [item["name"] for item in down]
     agent_down = [n for n in down_names if n in AGENT_SERVICES]

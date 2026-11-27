@@ -43,11 +43,12 @@ def test_generic_agent_edits_and_verifies_python_project():
             project,
             settings,
             verification_commands=[
-                "python -c \"from pathlib import Path; assert Path('.env').read_text() == ''\"",
+                "python -c \"from pathlib import Path; assert Path('.env').read_text() == ''; "
+                "print('ENV_EMPTY')\"",
                 "python -m py_compile src/main.py",
             ],
         )
 
         assert result.ok and result.verified and result.files_written > 0
         assert "MESSAGE = 'after'" in target.read_text(encoding="utf-8")
-        assert result.verifications[0].result.output == ""
+        assert result.verifications[0].result.output.endswith("ENV_EMPTY")
